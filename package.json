@@ -41,6 +41,10 @@
       {
         "from": "browser-payload.tar.gz",
         "to": "browser-payload.tar.gz"
+      },
+      {
+        "from": "modules-dist/",
+        "to": "modules-dist/"
       }
     ],
     "win": {

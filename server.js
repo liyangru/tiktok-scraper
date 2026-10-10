@@ -30,6 +30,31 @@ const MAX_SCROLLS = parseInt(process.env.MAX_SCROLLS || '400', 10);
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+/* 首次启动：把 exe 内置的模块包装进 BASE_DIR/modules（已有则跳过，之后可删可更新） */
+try {
+  const tar = require('tar');
+  // extraResources 落在 exe 同目录（不在 pkg 快照里），源码运行时才在 __dirname
+  const snapDir = fs.existsSync(path.join(path.dirname(process.execPath), 'modules-dist'))
+    ? path.join(path.dirname(process.execPath), 'modules-dist')
+    : path.join(__dirname, 'modules-dist');
+  const modDir = path.join(BASE_DIR, 'modules');
+  if (fs.existsSync(snapDir)) {
+    fs.mkdirSync(modDir, { recursive: true });
+    for (const f of fs.readdirSync(snapDir)) {
+      if (!f.endsWith('.tar.gz')) continue;
+      const id = f.split('-')[0];
+      if (!fs.existsSync(path.join(modDir, id))) {
+        await tar.x({ file: path.join(snapDir, f), cwd: modDir });
+        console.log(`  [modules] 预装 ${id}`);
+      }
+    }
+    const idxSrc = path.join(snapDir, 'index.json');
+    if (fs.existsSync(idxSrc)) fs.writeFileSync(path.join(BASE_DIR, 'modules-dist-index.json'), fs.readFileSync(idxSrc));
+  }
+} catch (e) {
+  console.log(`  ⚠ 模块预装失败：${e.message}`);
+}
+
 const app = express();
 app.use(express.json({ limit: '1mb' }));
 
