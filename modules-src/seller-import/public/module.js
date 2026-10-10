@@ -13,8 +13,11 @@
           <input id="siPwd" class="si-select" type="password" placeholder="${esc(t('siPwd'))}" autocomplete="new-password" style="min-width:160px">
           <button id="siLogin" class="btn-like primary">${esc(t('siLogin'))}</button>
         </div>
-        <div class="si-hint">${esc(t('siLoginHint'))}</div>
+        <div class="si-hint">${esc(t('siLoginHint'))}
+          <label style="margin-left:8px"><input type="checkbox" id="siRemember" checked> ${esc(t('siRemember'))}</label>
+        </div>
       </div>
+      <div class="si-hint">${esc(t('siSellerDataHint'))}</div>
       <div class="si-row">
         <button id="siOpenSeller" class="btn-like">${esc(t('siOpenSeller'))}</button>
         <span class="si-hint">${esc(t('siOpenSellerHint'))}</span>
@@ -67,6 +70,9 @@
       const account = $('#siAcc').value.trim();
       const password = $('#siPwd').value;
       if (!account || !password) return status(t('siNeedAccPwd'), 'err');
+      if ($('#siRemember').checked) {
+        fetch('/api/seller-import/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account, password }) }).catch(() => {});
+      }
       status(t('siLoggingIn'));
       $('#siLogin').disabled = true;
       try {

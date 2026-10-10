@@ -517,6 +517,42 @@ module.exports = {
     });
 
     const SELLER_DIR_REF = SELLER_DIR;
+    const CRED_FILE = path.join(ctx.baseDir, 'data', 'credentials.json');
+
+    /** 凭据存本地（base64 遮一层，仅防误读；不进 git、不上云） */
+    const readCreds = () => {
+      try {
+        const j = JSON.parse(fs.readFileSync(CRED_FILE, 'utf8'));
+        return { account: j.account || '', password: Buffer.from(j.p || '', 'base64').toString('utf8') };
+      } catch (_) { return { account: '', password: '' }; }
+    };
+    const writeCreds = (account, password) => {
+      fs.mkdirSync(path.dirname(CRED_FILE), { recursive: true });
+      fs.writeFileSync(CRED_FILE, JSON.stringify({ account, p: Buffer.from(password, 'utf8').toString('base64') }));
+    };
+
+    app.get('/api/seller-import/credentials', (req, res) => {
+      const c = readCreds();
+      res.json({ account: c.account, password: c.password, has: !!(c.account && c.password) });
+    });
+    app.post('/api/seller-import/credentials', (req, res) => {
+      const a = String((req.body && req.body.account) || '').trim();
+      const p2 = String((req.body && req.body.password) || '');
+      if (!a || !p2) return res.status(400).json({ error: '账号密码都要有' });
+      writeCreds(a, p2);
+      res.json({ ok: true, note: '已保存到本机 data/credentials.json（不上云）' });
+    });
+
+    // 启动时若存了凭据 → 后台自动无头登录一次（免二次输入）
+    (async () => {
+      const c = readCreds();
+      if (c.account && c.password) {
+        try {
+          const r = await autoLogin(ctx, c.account, c.password);
+          log(r.ok ? '✅ 已用保存的凭据自动登录卖家中心（无头）' : `自动登录未完成：${r.fail || r.manual || ''}`);
+        } catch (e) { log(`自动登录失败：${e.message}`); }
+      }
+    })();
 
     /* 套壳：打开卖家中心窗口（第一次要人工登录；导出文件自动接住入库） */
     app.post('/api/seller-import/open-browser', async (req, res) => {
@@ -557,6 +593,7 @@ module.exports = {
           sellerCtx = null;
           await c.close().catch(() => {});
         }
+        if (req.body && req.body.remember) writeCreds(account, password);
         const r = await autoLogin(ctx, account, password);
         if (r.ok) return res.json({ ok: true, loggedIn: true, note: '登录成功（全程无头，没有弹窗）。登录态已保存。' });
         if (r.fail) return res.status(400).json({ error: r.fail });
