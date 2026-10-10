@@ -1,6 +1,6 @@
 {
   "name": "tiktok-scraper",
-  "version": "1.0.2",
+  "version": "1.0.1",
   "private": true,
   "description": "TikTok 多账号视频数据抓取与报表生成",
   "author": "TikTok Scraper",
