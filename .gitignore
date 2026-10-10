@@ -28,3 +28,6 @@ release-mac/
 
 # 误生成的垃圾文件（Windows 保留名）
 nul
+
+# 界面窗口的浏览器 profile（运行产物）
+ui-profile/
