@@ -33,11 +33,12 @@
     <!-- ============ 左栏 ============ -->
     <div>
       <div class="panel">
-        <h2 class="sec-title"><span data-i18n="settings">抓取设置</span></h2>
+        <h2 class="sec-title"><span data-i18n="scrapeBox">数据抓取</span></h2>
 
         <label class="fld">
           <span><span data-i18n="usernames">TikTok 用户名</span>
             <em style="font-weight:400;color:#7f7f7f" data-i18n="usernamesHint"></em></span>
+        <div class="quick-acc" id="quickAcc"></div>
           <textarea id="handles" data-i18n-ph="usernamesPlaceholder"></textarea>
         </label>
 
@@ -86,8 +87,16 @@
     </div>
 
     <!-- ============ 右栏 ============ -->
-    <div id="module-panels"></div>
     <div>
+
+      <div class="tip-bubble" id="tipBubble" style="display:none">
+        <span class="tip-text" data-i18n="tipLoginBubble"></span>
+        <span class="tip-actions">
+          <button type="button" id="tipLogin" class="tip-btn primary" data-i18n="tipLoginBtn"></button>
+          <button type="button" id="tipNever" class="tip-btn" data-i18n="tipNever"></button>
+          <button type="button" id="tipClose" class="tip-x" aria-label="关闭">×</button>
+        </span>
+      </div>
       <div class="panel" id="resultsPanel" style="display:none">
         <h2 class="sec-title"><span data-i18n="overview">结果概览</span></h2>
         <div class="cards" id="cards"></div>
@@ -115,6 +124,7 @@
           <input class="search" id="search" placeholder="搜索文案 / 话题…">
           <div style="flex:1"></div>
           <div class="btn-row">
+            <button type="button" id="aiPeriodBtn" data-i18n="aiPeriod"></button>
             <button type="button" id="exportXlsx" class="primary" disabled data-i18n="downloadXlsx"></button>
             <button type="button" id="exportCsv" disabled data-i18n="downloadCsv"></button>
           </div>
@@ -141,6 +151,7 @@
                 <th class="num sortable" data-sort="inter"><span data-i18n="colEngage"></span><span class="ar"></span></th>
                 <th class="num sortable" data-sort="duration"><span data-i18n="colDuration"></span><span class="ar"></span></th>
                 <th class="ctr"><span data-i18n="colShopping"></span></th>
+                <th class="ctr"><span data-i18n="colDownload"></span></th>
                 <th></th>
               </tr>
             </thead>
@@ -178,9 +189,15 @@
     <div class="modal-note" data-i18n="modulesNote"></div>
 
     <div class="modal-body">
-      <div class="m-actions">
-        <button type="button" id="setLoginTiktok" class="primary" data-i18n="loginTiktok"></button>
-        <button type="button" id="setLoginSeller" data-i18n="loginSeller"></button>
+      <div class="set-group">
+        <div class="set-group-title" data-i18n="setLoginGroup"></div>
+        <div class="m-actions" id="loginActions"></div>
+      </div>
+      <div class="set-group">
+        <div class="set-group-title" data-i18n="setToolsGroup"></div>
+        <div class="m-actions" id="toolActions"></div>
+      </div>
+      <div class="m-actions" style="margin-top:8px">
         <button type="button" id="modRefresh" data-i18n="modulesRefresh"></button>
       </div>
       <div id="moduleList" class="module-list"></div>

@@ -79,14 +79,39 @@ async function pageText(page) {
 
 const isLoggedInUrl = (u) => !!u && !/\/login/i.test(u) && !/^about:blank/.test(u);
 
+/**
+ * 更可靠的登录判定。
+ * ⚠️ 用户实测：手机上确认后页面**会有一段时间仍停在 /login**（异步换 session），
+ *    只靠 URL 会「确认了但界面没反应」。所以三条任一成立就算登录成功：
+ *    ① URL 离开登录页 ② 拿到 sessionid/sessionid_ss cookie ③ 页面上出现已登录元素
+ */
+async function isLoggedIn(ctxRef, page) {
+  try {
+    const url = page.url();
+    if (isLoggedInUrl(url)) return true;
+  } catch (_) {}
+  try {
+    const cookies = await ctxRef.cookies('https://www.tiktok.com');
+    if (cookies.some((c) => /^(sessionid|sessionid_ss|sid_tt)$/.test(c.name) && c.value)) return true;
+  } catch (_) {}
+  try {
+    const hasAvatar = await page.evaluate(() => {
+      return !!(
+        document.querySelector('[data-e2e="profile-icon"], [data-e2e="nav-profile"], img[class*="avatar"], [class*="Avatar"]')
+      );
+    });
+    if (hasAvatar) return true;
+  } catch (_) {}
+  return false;
+}
+
 /** 后台心跳：每 1.5 秒刷新阶段（「不卡顿」的关键 —— 状态永远最新） */
 function startTicker(ctx) {
   if (ticker) clearInterval(ticker);
   ticker = setInterval(async () => {
     if (!pageRef || !ctxRef) return;
     try {
-      const url = pageRef.url();
-      if (isLoggedInUrl(url)) {
+      if (await isLoggedIn(ctxRef, pageRef)) {
         set('logged-in', '登录成功');
         return;
       }

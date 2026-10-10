@@ -498,3 +498,39 @@ thead th.on .ar { color: var(--ink); }
 
 /* 小号弹窗（登录用） */
 .modal-sm { width: min(520px, 92vw); }
+
+/* 行内下载按钮 */
+.row-dl {
+  width: 26px; height: 26px; border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--r-sm); font-size: 13px; line-height: 1; cursor: pointer;
+  color: var(--ink-2); padding: 0;
+}
+.row-dl:hover { color: var(--ink); border-color: var(--ink); background: var(--surface-2); }
+
+/* 详情内的 AI / 复刻脚本 */
+.d-actions { display: flex; gap: 8px; margin: 12px 0; }
+.d-actions button {
+  padding: 8px 16px; border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--r-pill); font-size: 12px; cursor: pointer; color: var(--ink-2);
+}
+.d-actions button:hover { color: var(--ink); border-color: var(--ink); }
+.d-out:empty { display: none; }
+.d-out { margin-top: 12px; }
+
+/* 设置弹窗里的分组入口 */
+.set-group { margin-bottom: 16px; }
+.set-group-title { font-size: 12px; color: var(--ink-3); margin-bottom: 8px; font-weight: 650; }
+.tool-open {
+  padding: 8px 16px; border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--r-pill); font-size: 13px; cursor: pointer; color: var(--ink-2);
+}
+.tool-open:hover { color: var(--ink); border-color: var(--ink); }
+
+/* 常用账号快捷按钮 */
+.quick-acc { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.quick-label { font-size: 12px; color: var(--ink-3); }
+.quick-btn {
+  padding: 4px 12px; border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--r-pill); font-size: 12px; cursor: pointer; color: var(--ink-2);
+}
+.quick-btn:hover { color: var(--ink); border-color: var(--ink); background: var(--surface-2); }

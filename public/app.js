@@ -199,7 +199,7 @@ async function start() {
         handles,
         from: $('#from').value,
         to: $('#to').value,
-        concurrency: Number($('#conc').value),
+        concurrency: 1, // 固定顺序执行（并发选择器已移除：实测并发会显著提高失败率）
       }),
     });
     const j = await res.json();
@@ -455,6 +455,7 @@ function renderResults() {
       <td class="num">${(r.inter * 100).toFixed(2)}%</td>
       <td class="num">${r.duration}s</td>
       <td class="ctr">${r.isEC ? `<span class="ec">${esc(t('yesShort'))}</span>` : '<span class="dim">—</span>'}</td>
+      <td class="ctr"><button type="button" class="row-dl" data-vid="${esc(r.vid)}" title="${esc(t('colDownload'))}">⤓</button></td>
       <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('colOpen'))}</a></td>
     </tr>`
     )
@@ -523,7 +524,7 @@ function bindRowClick() {
     if (!r) return;
     const d = document.createElement('tr');
     d.className = 'd-tr';
-    d.innerHTML = `<td colspan="15"><div class="d-detail"><div class="d-grid">
+    d.innerHTML = `<td colspan="16"><div class="d-detail"><div class="d-grid">
       ${[['视频ID', r.vid], ['语种', r.lang || '—'], ['音乐', r.music || '—'], ['分辨率', r.resolution || '—'],
         ['挂车', r.isEC ? '是' : '—'], ['广告', r.isAd ? '是' : '—'], ['AIGC', r.isAIGC ? '是' : '—'],
         ['发布时间', r.date + ' ' + r.time], ['时长', r.duration + 's'],
@@ -531,7 +532,13 @@ function bindRowClick() {
         ['分享/收藏/转发', fmt(r.shares) + ' / ' + fmt(r.saves) + ' / ' + fmt(r.reposts)],
         ['互动率', pct2(r.inter)], ['下载直链', r.playUrl ? '有（视频下载模块可用）' : 'item_list 未下发，详情页可补']]
         .map(([k, v]) => `<div><span class="dk">${esc(k)}</span><span class="dv">${esc(v)}</span></div>`).join('')}
-      </div><div class="d-hist" id="dHist-${esc(r.vid)}">${esc(t('loading'))}…</div></div></td>`;
+      </div>
+      <div class="d-actions">
+        <button type="button" class="d-ai" data-vid="${esc(r.vid)}">${esc(t('aiOneVideo'))}</button>
+        <button type="button" class="d-remake" data-vid="${esc(r.vid)}">${esc(t('aiRemakeBtn'))}</button>
+      </div>
+      <div class="d-hist" id="dHist-${esc(r.vid)}">${esc(t('loading'))}…</div>
+      <div class="d-out" id="dOut-${esc(r.vid)}"></div></div></td>`;
     tr.after(d);
     // 历史趋势（来自视频库）
     try {
@@ -658,36 +665,42 @@ function loadScript(src) {
 }
 
 /** 把已启用模块的前端面板挂进主界面（单个失败不影响其它） */
-async function mountModulePanels() {
-  const host = $('#module-panels');
-  if (!host) return;
+/**
+ * 模块不再挂在主页（用户要求：模块只在需要时出现，别在主页占一大块）。
+ * 改为在「设置」弹窗里生成两组入口：登录 / 工具，点击后在小弹窗里打开对应功能。
+ */
+const LOGIN_MODULES = ['tiktok-login', 'seller-import'];
+const LOGIN_LABEL = { 'tiktok-login': 'loginTiktok', 'seller-import': 'loginSeller' };
+
+async function mountToolButtons() {
   let data;
-  try { data = await fetch('/api/modules').then((x) => x.json()); } catch (_) { return; }
-  // 纯登录模块不进主界面（只从「设置 → 登录」的小弹窗进入）
-  const LOGIN_ONLY = ['tiktok-login'];
-  const enabled = (data.modules || []).filter((m) => m.installed && m.enabled && !LOGIN_ONLY.includes(m.id));
-  for (const m of enabled) {
-    const el = document.createElement('section');
-    el.className = 'panel module-panel';
-    el.dataset.module = m.id;
-    const h = document.createElement('h2');
-    h.className = 'sec-title';
-    h.textContent = m.name;
-    const body = document.createElement('div');
-    el.append(h, body);
-    host.appendChild(el);
-    try {
-      await loadScript(`/modules/${m.id}/module.js`);
-      const reg = window.TTModule.get(m.id);
-      if (reg && typeof reg.mount === 'function') reg.mount(body, { t });
-      else body.innerHTML = '<div class="si-status">' + esc(t('moduleNoFrontend')) + '</div>';
-    } catch (e) {
-      body.innerHTML = '<div class="si-status">' + esc(m.name) + '：' + esc(e.message) + '</div>';
-    }
+  try {
+    data = await fetch('/api/modules').then((x) => x.json());
+  } catch (_) {
+    return;
   }
+  const enabled = (data.modules || []).filter((m) => m.installed && m.enabled);
+  const loginHost = $('#loginActions');
+  const toolHost = $('#toolActions');
+  if (loginHost) {
+    loginHost.innerHTML = enabled
+      .filter((m) => LOGIN_MODULES.includes(m.id))
+      .map((m) => `<button type="button" class="tool-open" data-id="${esc(m.id)}">${esc(m.name)}</button>`)
+      .join('');
+  }
+  if (toolHost) {
+    toolHost.innerHTML = enabled
+      .filter((m) => !LOGIN_MODULES.includes(m.id))
+      .map((m) => `<button type="button" class="tool-open" data-id="${esc(m.id)}">${esc(m.name)}</button>`)
+      .join('');
+  }
+  document.querySelectorAll('.tool-open').forEach((b) =>
+    b.addEventListener('click', () => openTool(b.dataset.id))
+  );
 }
 
-mountModulePanels();
+mountToolButtons();
+
 
 
 /* ================= 提示气泡（可关闭 / 可不再显示） ================= */
@@ -714,16 +727,18 @@ function initTipBubble() {
     toast(t('tipNeverDone'), 'ok');
   });
   // 登录：打开应用内小弹窗（不是浏览器窗口）
-  $('#tipLogin').addEventListener('click', () => openLogin('tiktok-login'));
+  $('#tipLogin').addEventListener('click', () => openTool('tiktok-login'));
 }
 
 /* ================= 登录弹窗（应用内小窗，承载登录类模块） ================= */
 const LOGIN_MODULE_TITLE = { 'tiktok-login': 'loginTiktok', 'seller-import': 'loginSeller' };
 
-async function openLogin(moduleId) {
+async function openTool(moduleId) {
   const m = $('#loginModal');
   if (!m) return;
-  $('#loginTitle').textContent = t(LOGIN_MODULE_TITLE[moduleId] || 'loginTitle');
+  const mods = await fetch('/api/modules').then((x) => x.json()).catch(() => ({ modules: [] }));
+  const man = (mods.modules || []).find((m) => m.id === moduleId);
+  $('#loginTitle').textContent = man ? man.name : t('loginTitle');
   const body = $('#loginBody');
   body.innerHTML = `<div class="m-loading">${esc(t('loading'))}</div>`;
   m.style.display = 'flex';
@@ -738,7 +753,7 @@ async function openLogin(moduleId) {
   }
 }
 
-function closeLogin() {
+function closeTool() {
   const m = $('#loginModal');
   if (m) m.style.display = 'none';
   $('#loginBody').innerHTML = '';
@@ -747,15 +762,145 @@ function closeLogin() {
 function initLoginModal() {
   const m = $('#loginModal');
   if (!m) return;
-  $('#loginClose').addEventListener('click', closeLogin);
+  $('#loginClose').addEventListener('click', closeTool);
   m.addEventListener('click', (e) => {
-    if (e.target === m) closeLogin();
+    if (e.target === m) closeTool();
   });
-  const a = $('#setLoginTiktok');
-  const b = $('#setLoginSeller');
-  if (a) a.addEventListener('click', () => openLogin('tiktok-login'));
-  if (b) b.addEventListener('click', () => openLogin('seller-import'));
 }
 
 initTipBubble();
 initLoginModal();
+
+
+/* ================= 行内下载 / 详情内 AI 与复刻脚本 ================= */
+function currentJobId() {
+  return state.jobId || '';
+}
+
+async function downloadOne(vid) {
+  const r = currentRows().find((x) => String(x.vid) === String(vid));
+  if (!r) return toast(t('dlNeedPick'), 'err');
+  toast(t('dlDownloading', { n: 1 }), 'ok');
+  try {
+    const res = await fetch('/api/video-download/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: [r], quality: 'best' }),
+    }).then((x) => x.json());
+    if (res.error) throw new Error(res.error);
+    const poll = setInterval(async () => {
+      const job = await fetch(`/api/video-download/jobs/${res.jobId}`).then((x) => x.json()).catch(() => null);
+      if (!job) return;
+      if (job.status === 'done' || job.status === 'error') {
+        clearInterval(poll);
+        if (job.files && job.files.length) toast(t('dlFinished', { ok: job.files.length, bad: job.errors.length }), 'ok');
+        else toast(t('dlFinished', { ok: 0, bad: job.errors.length }), 'err');
+      }
+    }, 2000);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function aiOneVideo(vid, outEl) {
+  outEl.innerHTML = `<div class="si-hint">${esc(t('aiWorking'))}</div>`;
+  try {
+    const r = await fetch('/api/ai-analyst/video', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vid }),
+    }).then((x) => x.json());
+    if (r.error) throw new Error(r.error);
+    outEl.innerHTML = '<div class="ai-md">' + esc(r.analysis).replace(/^### (.*)$/gm, '<h4>$1</h4>').replace(/\n/g, '<br>') + '</div>';
+  } catch (e) {
+    outEl.innerHTML = `<div class="si-status err">${esc(e.message)}</div>`;
+  }
+}
+
+async function remakeVideo(vid, outEl) {
+  outEl.innerHTML = `<div class="si-hint">${esc(t('aiRemakeWorking'))}</div>`;
+  try {
+    const r = await fetch('/api/ai-analyst/remake', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vid }),
+    }).then((x) => x.json());
+    if (r.error) throw new Error(r.error);
+    outEl.innerHTML = '<div class="ai-md">' + esc(r.script).replace(/^### (.*)$/gm, '<h4>$1</h4>').replace(/\n/g, '<br>') + '</div>';
+    // 标记「已生成」
+    const btn = outEl.parentElement.querySelector('.d-remake');
+    if (btn) btn.textContent = t('aiRemakeRegen');
+  } catch (e) {
+    outEl.innerHTML = `<div class="si-status err">${esc(e.message)}</div>`;
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const dl = e.target.closest('.row-dl');
+  if (dl) { e.stopPropagation(); downloadOne(dl.dataset.vid); return; }
+  const ai = e.target.closest('.d-ai');
+  if (ai) { aiOneVideo(ai.dataset.vid, document.getElementById('dOut-' + ai.dataset.vid)); return; }
+  const rm = e.target.closest('.d-remake');
+  if (rm) { remakeVideo(rm.dataset.vid, document.getElementById('dOut-' + rm.dataset.vid)); return; }
+});
+
+/* AI 时期分析（整体，常驻入口） */
+function initAiPeriod() {
+  const b = $('#aiPeriodBtn');
+  if (!b) return;
+  b.addEventListener('click', async () => {
+    const jobId = currentJobId();
+    if (!jobId) return toast(t('siNeedJob'), 'err');
+    openTool('ai-analyst');
+    // 打开工具弹窗后自动触发该任务的时期分析
+    setTimeout(async () => {
+      const body = $('#loginBody');
+      if (!body) return;
+      body.innerHTML = `<div class="si-hint">${esc(t('aiWorking'))}</div>`;
+      try {
+        const r = await fetch('/api/ai-analyst/brand', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jobId }),
+        }).then((x) => x.json());
+        if (r.error) throw new Error(r.error);
+        body.innerHTML = '<div class="ai-md">' + esc(r.analysis).replace(/^### (.*)$/gm, '<h4>$1</h4>').replace(/\n/g, '<br>') + '</div>';
+      } catch (err) {
+        body.innerHTML = `<div class="si-status err">${esc(err.message)}</div>`;
+      }
+    }, 400);
+  });
+}
+initAiPeriod();
+
+
+/* ================= 常用账号快捷分析（已登录账号 / 最近抓过） ================= */
+async function initQuickAcc() {
+  const host = $('#quickAcc');
+  if (!host) return;
+  let names = [];
+  try {
+    const d = await fetch('/api/tiktok-login/accounts').then((x) => x.json());
+    names = (d.accounts || []).filter((x) => x && x !== 'default');
+  } catch (_) {}
+  // 最近抓过的账号也一并列出
+  try {
+    const jobs = await fetch('/api/jobs').then((x) => x.json());
+    for (const j of jobs || []) for (const h of j.handles || []) if (!names.includes(h)) names.push(h);
+  } catch (_) {}
+  names = [...new Set(names)].slice(0, 12);
+  if (!names.length) { host.style.display = 'none'; return; }
+  host.innerHTML =
+    `<span class="quick-label">${esc(t('quickAcc'))}</span>` +
+    names.map((n) => `<button type="button" class="quick-btn" data-h="${esc(n)}">@${esc(n)}</button>`).join('');
+  host.querySelectorAll('.quick-btn').forEach((b) =>
+    b.addEventListener('click', () => {
+      const ta = $('#handles');
+      const cur = ta.value.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
+      if (!cur.includes(b.dataset.h)) cur.push(b.dataset.h);
+      ta.value = cur.join('\n');
+      toast(t('quickAdded', { h: b.dataset.h }), 'ok');
+    })
+  );
+}
+initQuickAcc();
