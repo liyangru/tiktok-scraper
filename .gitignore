@@ -1,0 +1,26 @@
+# 依赖与浏览器二进制（体积大，不入库）
+node_modules/
+browsers/
+.mac-browsers*/
+_macdl/
+
+# 运行时数据（抓取记录、持久化浏览器 profile）
+data/
+*.log
+
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+*.swp
+
+# 密钥 / 环境变量
+.env
+
+# 打包产物
+*.tar.gz
+dist/
+release/
+release-mac/
+
+# 误生成的垃圾文件（Windows 保留名）
+nul

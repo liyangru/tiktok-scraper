@@ -1,0 +1,102 @@
+{
+  "name": "tiktok-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TikTok 多账号视频数据抓取与报表生成",
+  "author": "TikTok Scraper",
+  "main": "electron/main.js",
+  "bin": "bootstrap.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "app": "electron .",
+    "build:app": "electron-builder --win portable",
+    "build:app:mac": "bash scripts/build-mac.sh",
+    "build:exe": "node scripts/patch-pkg.js && pkg . --targets node22-win-x64 --no-bytecode --public --public-packages \"*\" --output dist/tiktok-scraper.exe && node scripts/patch-exe-subsystem.js dist/tiktok-scraper.exe"
+  },
+  "build": {
+    "appId": "com.ttscraper.app",
+    "productName": "TikTokScraper",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!browser-payload*.tar.gz",
+      "!_macdl/**",
+      "!.mac-browsers*/**",
+      "!dist/**",
+      "!release/**",
+      "!release-mac/**",
+      "!data/**",
+      "!browsers/**",
+      "!*.md",
+      "!nul"
+    ],
+    "extraResources": [
+      {
+        "from": "browser-payload.tar.gz",
+        "to": "browser-payload.tar.gz"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "portable": {
+      "artifactName": "TikTokScraper-${version}.exe"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "zip"
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null,
+      "artifactName": "TikTokScraper-${version}-${arch}-mac.zip"
+    }
+  },
+  "pkg": {
+    "assets": [
+      "public/**/*",
+      "browser-payload.tar.gz",
+      "node_modules/playwright-core/**/*.json",
+      "node_modules/patchright-core/**/*.json",
+      "node_modules/patchright/**/*.json",
+      "node_modules/**/*.mjs",
+      "node_modules/**/*.cjs",
+      "node_modules/generator-function/**/*",
+      "node_modules/async-function/**/*"
+    ],
+    "targets": [
+      "node22-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2",
+    "patchright": "^1.63.0",
+    "playwright": "^1.64.0",
+    "playwright-core": "^1.63.0",
+    "tar": "^7.5.22"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.23.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
+  }
+}

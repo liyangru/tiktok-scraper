@@ -1,0 +1,20 @@
+services:
+  tiktok-scraper:
+    build: .
+    image: tiktok-scraper:latest
+    container_name: tiktok-scraper
+    restart: unless-stopped
+    ports:
+      # 只监听本机时改成 "127.0.0.1:8899:8899"，前面挂 Nginx/Caddy 做 HTTPS
+      - "8899:8899"
+    environment:
+      - PORT=8899
+      - HOST=0.0.0.0
+      - CONCURRENCY=1                    # 并发>1 实测不可靠，保持 1
+      - MAX_SCROLLS=400
+      - ACCESS_TOKEN=${ACCESS_TOKEN:?请先在 .env 里设置 ACCESS_TOKEN}
+      # - BROWSER_HEADLESS=1             # 千万别开！无头模式拿不到数据
+    volumes:
+      - ./data:/app/data
+    shm_size: 1gb              # Chromium 需要足够的 /dev/shm
+    mem_limit: 2g

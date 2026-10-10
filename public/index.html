@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>TikTok 多账号数据抓取</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top topbar">
+    <div class="brand">
+      <h1 data-i18n="title">TikTok 多账号数据抓取</h1>
+      <div class="sub" data-i18n="subtitle"></div>
+    </div>
+    <div class="tools">
+      <div class="browser-chip" id="browserChip"><span class="dot"></span><span>…</span></div>
+      <div class="lang-switch" role="group" aria-label="Language">
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+        <button type="button" data-lang="th" aria-pressed="false">ไทย</button>
+        <button type="button" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid">
+
+    <!-- ============ 左栏 ============ -->
+    <div>
+      <div class="panel">
+        <h2 class="sec-title"><span data-i18n="settings">抓取设置</span></h2>
+
+        <label class="fld">
+          <span><span data-i18n="usernames">TikTok 用户名</span>
+            <em style="font-weight:400;color:#7f7f7f" data-i18n="usernamesHint"></em></span>
+          <textarea id="handles" data-i18n-ph="usernamesPlaceholder"></textarea>
+        </label>
+
+        <div class="row2">
+          <label class="fld">
+            <span data-i18n="startDate">起始日期</span>
+            <input type="date" id="from">
+          </label>
+          <label class="fld">
+            <span data-i18n="endDate">结束日期</span>
+            <input type="date" id="to">
+          </label>
+        </div>
+
+        <div class="btn-row" style="margin:-4px 0 14px">
+          <button type="button" data-range="thisMonth" style="font-size:11.5px;padding:4px 9px" data-i18n="thisMonth"></button>
+          <button type="button" data-range="lastMonth" style="font-size:11.5px;padding:4px 9px" data-i18n="lastMonth"></button>
+          <button type="button" data-range="last3" style="font-size:11.5px;padding:4px 9px" data-i18n="last3"></button>
+          <button type="button" data-range="all" style="font-size:11.5px;padding:4px 9px" data-i18n="all"></button>
+        </div>
+
+        <label class="fld">
+          <span><span data-i18n="concurrency">并发数</span>
+            <em style="font-weight:400;color:#7f7f7f" data-i18n="concurrencyHint"></em></span>
+          <select id="conc">
+            <option value="1" selected data-i18n="conc1"></option>
+            <option value="2" data-i18n="conc2"></option>
+            <option value="3" data-i18n="conc3"></option>
+          </select>
+        </label>
+
+        <button type="button" id="startBtn" class="primary wide" data-i18n="start"></button>
+        <div style="margin-top:8px">
+          <button type="button" id="stopBtn" class="wide" disabled data-i18n="stop"></button>
+        </div>
+
+        <div class="notice" style="margin:14px 0 0;font-size:11.5px">
+          <span data-i18n="tip" data-i18n-html="1"></span>
+          <div style="margin-top:8px"><span data-i18n="concNote" data-i18n-html="1"></span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="sec-title"><span data-i18n="progress">进度</span> <span class="hint" id="resultMeta"></span></h2>
+        <div id="accounts" aria-live="polite"><div class="empty" style="padding:20px" data-i18n="notStarted"></div></div>
+        <div style="margin:14px 0 8px;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:11.5px;color:#737373" data-i18n="log">运行日志</span>
+          <button type="button" id="copyLog" style="font-size:11px;padding:2px 8px" data-i18n="copyLog"></button>
+        </div>
+        <div class="log" id="log" role="log" aria-live="polite"></div>
+      </div>
+
+      <div class="panel">
+        <h2 class="sec-title"><span data-i18n="history">历史任务</span></h2>
+        <div id="history"></div>
+      </div>
+    </div>
+
+    <!-- ============ 右栏 ============ -->
+    <div>
+      <div class="panel" id="resultsPanel" style="display:none">
+        <h2 class="sec-title"><span data-i18n="overview">结果概览</span></h2>
+        <div class="cards" id="cards"></div>
+
+        <div class="res-tools">
+          <div class="tabs" id="tabs"></div>
+          <input class="search" id="search" placeholder="搜索文案 / 话题…">
+          <div style="flex:1"></div>
+          <div class="btn-row">
+            <button type="button" id="exportXlsx" class="primary" disabled data-i18n="downloadXlsx"></button>
+            <button type="button" id="exportCsv" disabled data-i18n="downloadCsv"></button>
+          </div>
+        </div>
+
+        <h2 class="sec-title" style="margin:0 0 10px"><span data-i18n="details">视频明细</span>
+          <span class="hint" id="tableMeta"></span></h2>
+
+        <div class="tbl-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="num" style="width:44px">#</th>
+                <th class="sortable" data-sort="account"><span data-i18n="colAccount"></span><span class="ar"></span></th>
+                <th class="sortable" data-sort="date"><span data-i18n="colDate"></span><span class="ar"></span></th>
+                <th class="sortable" data-sort="time"><span data-i18n="colTime"></span><span class="ar"></span></th>
+                <th><span data-i18n="colCaption"></span></th>
+                <th class="num sortable" data-sort="views"><span data-i18n="colViews"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="likes"><span data-i18n="colLikes"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="comments"><span data-i18n="colComments"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="shares"><span data-i18n="colShares"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="saves"><span data-i18n="colSaves"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="inter"><span data-i18n="colEngage"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="duration"><span data-i18n="colDuration"></span><span class="ar"></span></th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel" id="emptyPanel">
+        <div class="empty">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#8a8a8a" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:16px" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <path d="M3 9h18M8 4v16"></path>
+            <path d="M12.5 13.4l1.6 1.6 3-3.2"></path>
+          </svg>
+          <div style="font-size:15px;color:#3d3d3d;margin-bottom:8px;font-weight:600" data-i18n="emptyTitle"></div>
+          <div style="max-width:44ch;margin:0 auto" data-i18n="emptySub"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toasts" role="status" aria-live="polite"></div>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
