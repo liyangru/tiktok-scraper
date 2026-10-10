@@ -146,6 +146,37 @@ npm run build:exe      # 产出 dist/tiktok-scraper.exe（约 280MB）
 
 ---
 
+## 发布到 GitHub（一条命令出全平台安装包）
+
+仓库里带了两个工作流，**所有平台的浏览器都在 CI 里现下现打**，所以仓库不需要放大文件（GitHub 单文件上限 100MB，180MB+ 的浏览器载荷本来就进不了仓库）。
+
+| 工作流 | 触发 | 产出 |
+|---|---|---|
+| `build-mac.yml` | Actions 页手动 | 只要 macOS 包（arm64 / x64），从 Artifacts 下载 |
+| `release.yml` | 推 `v*` tag 或手动 | Windows ×2 + macOS ×2 + 部署包，**自动发 Release** |
+
+推代码 / 出包一条命令：
+
+```bash
+gh auth login                                    # 或用 GITHUB_TOKEN=xxx
+bash scripts/publish-github.sh <owner>/<repo>            # 只推代码
+bash scripts/publish-github.sh <owner>/<repo> v1.0.0     # 推代码 + 打 tag → 出全平台包并发 Release
+```
+
+脚本会：仓库不存在就建（默认 private，可用 `VISIBILITY=public` 改）→ 推送（token 走一次性 URL，**不写进 `.git/config`**）→ 打 tag 触发构建。
+
+Release 里的产物：
+
+| 文件 | 说明 |
+|---|---|
+| `TikTokScraper-<版本>.exe` | Windows Electron 便携版（推荐） |
+| `tiktok-scraper.exe` | Windows pkg 单文件便携版（备选） |
+| `TikTokScraper-<版本>-arm64-mac.zip` | macOS Apple Silicon |
+| `TikTokScraper-<版本>-x64-mac.zip` | macOS Intel |
+| `tiktok-scraper-server-<版本>.tar.gz` | 本地 / 服务器部署包（源码 + `start.sh`，需 Node 18+） |
+
+---
+
 ## 部署到腾讯云服务器（推荐）
 
 ### ⚠️ 第一件事：必须选海外节点

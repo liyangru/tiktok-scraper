@@ -1,0 +1,212 @@
+# 一键出全平台安装包并发布 GitHub Release
+#
+# 触发方式：
+#   1. 打 tag 推送：  git tag v1.0.0 && git push origin v1.0.0
+#   2. 或在 Actions 页手动 Run workflow（只构建 + 传 artifact，不发布 Release）
+#
+# 产出：
+#   Windows  TikTokScraper-<版本>.exe   （Electron 便携版，主推）
+#            tiktok-scraper.exe         （pkg 单文件便携版，备选）
+#   macOS    TikTokScraper-<版本>-arm64-mac.zip（Apple Silicon）
+#            TikTokScraper-<版本>-x64-mac.zip  （Intel）
+#   本地/服务器部署包
+#            tiktok-scraper-server-<版本>.tar.gz（源码 + 一键启动脚本）
+#
+# 说明：所有平台的浏览器（Chromium）都在 CI 里现下现打，所以仓库里不需要放大文件
+#      （GitHub 单文件上限 100MB，180MB+ 的浏览器载荷本来也进不了仓库）。
+
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------- Windows
+  win:
+    name: Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 安装依赖
+        run: npm install --no-audit --no-fund
+
+      - name: 准备 Windows 版 Chromium 载荷
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 与实测抓通的版本对齐：playwright chromium-1248 / Chrome for Testing 156.0.8078.4
+          export PLAYWRIGHT_BROWSERS_PATH="$PWD/.win-browsers"
+          npx playwright install chromium
+          CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
+          [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
+          tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
+          echo "载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+
+      - name: 构建 pkg 单文件 exe
+        run: npm run build:exe
+
+      - name: 构建 Electron 便携版
+        run: npm run build:app
+
+      - name: 汇总产物
+        shell: bash
+        run: |
+          mkdir -p out
+          cp dist/tiktok-scraper.exe out/tiktok-scraper.exe
+          cp release/*.exe out/
+          ls -la out/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win
+          path: out/*
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------ macOS
+  mac:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x64
+            runner: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 安装依赖
+        run: npm install --no-audit --no-fund
+
+      - name: 准备 macOS 版 Chromium 载荷
+        run: |
+          set -euo pipefail
+          export PLAYWRIGHT_BROWSERS_PATH="$PWD/.mac-browsers"
+          npx playwright install chromium
+          CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
+          [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
+          tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
+          echo "载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+
+      - name: electron-builder 打包
+        run: npx electron-builder --mac zip --${{ matrix.arch }} -c.directories.output=release-mac
+
+      - name: ad-hoc 签名（Apple Silicon 必需）
+        run: |
+          set -euo pipefail
+          for app in release-mac/mac*/*.app; do
+            [ -d "$app" ] || continue
+            codesign --force --deep --sign - "$app"
+            echo "已签名: $app"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: release-mac/*.zip
+          if-no-files-found: error
+
+  # --------------------------------------------------- 本地 / 服务器部署包
+  server-bundle:
+    name: 部署包
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 打包源码 + 启动脚本
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME#v}"
+          [ -n "$VER" ] || VER="dev"
+          PKG="tiktok-scraper-server-${VER}"
+          rm -rf "/tmp/${PKG}" && mkdir -p "/tmp/${PKG}"
+          # 只带源码，不带 node_modules / 构建产物
+          tar -cf - --exclude='./node_modules' --exclude='./dist' --exclude='./release*' \
+                   --exclude='./.git' --exclude='*.tar.gz' . | tar -xf - -C "/tmp/${PKG}"
+          cat > "/tmp/${PKG}/start.sh" <<'EOF'
+          #!/usr/bin/env bash
+          # 本地 / 服务器一键启动
+          set -e
+          cd "$(dirname "$0")"
+          [ -d node_modules ] || npm install --no-audit --no-fund
+          # 首次运行若要用自带浏览器（而不是系统 Chrome），先下载一份：
+          #   npx playwright install chromium
+          exec node server.js
+          EOF
+          chmod +x "/tmp/${PKG}/start.sh"
+          tar -czf "${PKG}.tar.gz" -C /tmp "${PKG}"
+          ls -la "${PKG}.tar.gz"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-bundle
+          path: tiktok-scraper-server-*.tar.gz
+          if-no-files-found: error
+
+  # --------------------------------------------------------------- Release
+  release:
+    name: 发布 Release
+    runs-on: ubuntu-latest
+    needs: [win, mac, server-bundle]
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - name: 列出资产
+        run: ls -la assets/
+
+      - name: 创建 Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "$TAG" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "TikTok 多账号数据抓取 ${TAG}" \
+            --notes "$(cat <<'EOF'
+          ## 下载
+
+          | 平台 | 文件 | 说明 |
+          |---|---|---|
+          | Windows | `TikTokScraper-*.exe` | Electron 桌面应用，双击即用（推荐） |
+          | Windows | `tiktok-scraper.exe` | pkg 单文件便携版（备选） |
+          | macOS Apple Silicon | `TikTokScraper-*-arm64-mac.zip` | M 系列芯片 |
+          | macOS Intel | `TikTokScraper-*-x64-mac.zip` | Intel 芯片 |
+          | 本地 / 服务器 | `tiktok-scraper-server-*.tar.gz` | 源码 + `start.sh`，需 Node 18+ |
+
+          ## 首次运行
+
+          - **Windows**：双击 exe。首次启动会把自带 Chromium 解压到同目录的 `tiktok-scraper-data/`（约 440MB，几秒），之后秒开。
+          - **macOS**：解压后把 `.app` 拖进「应用程序」。未做 Apple 公证，首次打开请**右键 → 打开**，或执行
+            `xattr -dr com.apple.quarantine /Applications/TikTokScraper.app`
+          - **服务器**：解压后 `./start.sh`。
+
+          所有版本都**自带浏览器**，不依赖系统 Chrome、运行时不联网下载。
+          EOF
+          )" \
+            assets/*
+
+          echo "Release 已发布: ${GITHUB_REPOSITORY}/releases/tag/${TAG}"
