@@ -127,9 +127,34 @@ async function preloadBundledModules() {  if (!isPkg) return;
   }
 }
 
+/**
+ * 干掉占用我们 ui-profile 的残留 Chromium。
+ * 不清理的话：新 spawn 会把 URL「转发」给已在跑的旧 Chromium 然后自己退出 →
+ * 看起来就是「双击没反应 / 窗口不出现」。这是 Chromium 的 profile 单例行为。
+ */
+function killStaleUiBrowsers() {
+  try {
+    const { execFileSync } = require('child_process');
+    const out = execFileSync('wmic', ['process', 'where', "name='chrome.exe'", 'get', 'ProcessId,CommandLine', '/format:csv'], {
+      encoding: 'utf8', windowsHide: true, timeout: 8000,
+    });
+    for (const line of out.split(/\r?\n/)) {
+      if (!line.includes('ui-profile')) continue;
+      const m = /(\d+)\s*$/.exec(line.trim());
+      if (m) {
+        try {
+          execFileSync('taskkill', ['/F', '/PID', m[1]], { windowsHide: true, stdio: 'ignore' });
+          log('清理占用界面的残留浏览器 PID', m[1]);
+        } catch (_) {}
+      }
+    }
+  } catch (_) {} // wmic 不可用就算了，不影响主流程
+}
+
 /** 打开应用窗口（自带 Chromium --app 模式；失败静默） */
 function openAppWindow(url) {
   try {
+    killStaleUiBrowsers();
     const { spawn } = require('child_process');
     const exe = process.env.CHROME_PATH || path.join(BASE_DIR, 'browsers', 'chromium-1248', 'chrome-win64', 'chrome.exe');
     if (!fs.existsSync(exe)) return false;
@@ -161,24 +186,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 //   2) 每个阶段更新进度；主服务就绪后把真实端口告诉加载页，页面自动跳转
 //   3) 失败：加载页常驻显示原因与日志路径，进程不退出
 (async () => {
-  let PORT = parseInt(process.env.PORT || "8899", 10);
+  const APP_PORT = parseInt(process.env.PORT || "8899", 10); // 主服务用的端口（加载页绝不占用它）
   let splash = null;
 
   // ---- 单实例守卫 ----
   try {
-    const probe = await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(1500) });
+    const probe = await fetch(`http://127.0.0.1:${APP_PORT}/api/health`, { signal: AbortSignal.timeout(1500) });
     if (probe.ok) {
       const j = await probe.json().catch(() => ({}));
       const ver = require('./package.json').version;
       if (j.version === ver) {
         log('已有实例在运行（同版本），直接打开它的窗口');
-        openAppWindow(`http://127.0.0.1:${PORT}/`);
+        openAppWindow(`http://127.0.0.1:${APP_PORT}/`);
         process.exit(0);
       }
       // 端口上是个旧版本：提示用户先关掉，同时把旧窗口打开方便其关闭
-      const msg = `检测到旧版本仍在运行（端口 ${PORT}）。\n请先关闭旧的 TikTok 数据抓取窗口，再重新启动本程序。`;
+      const msg = `检测到旧版本仍在运行（端口 ${APP_PORT}）。\n请先关闭旧的 TikTok 数据抓取窗口，再重新启动本程序。`;
       log('⚠ ' + msg);
-      openAppWindow(`http://127.0.0.1:${PORT}/`);
+      openAppWindow(`http://127.0.0.1:${APP_PORT}/`);
       // 用加载页把这句话显示出来（它不占目标端口，随时可用）
       const { createSplash } = require('./lib/splash');
       const s2 = await createSplash();
@@ -192,9 +217,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     const { createSplash } = require('./lib/splash');
     splash = await createSplash(); // 临时端口，不占目标端口
-    PORT = splash.port;
-    log('加载页:', `http://127.0.0.1:${PORT}/`);
-    if (process.env.NO_AUTO_OPEN !== '1') openAppWindow(`http://127.0.0.1:${PORT}/`);
+    log('加载页:', `http://127.0.0.1:${splash.port}/`);
+    if (process.env.NO_AUTO_OPEN !== '1') {
+      const ok = openAppWindow(`http://127.0.0.1:${splash.port}/`);
+      log(ok ? '已打开加载窗口' : '⚠ 未能打开窗口（找不到内置 Chromium？）');
+    }
 
     splash.set('解压内置浏览器…');
     if (isPkg) {
@@ -211,10 +238,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     splash.set('启动主服务…');
     process.env.NO_AUTO_OPEN = '1'; // 窗口已打开，主服务别再开第二个
     const { start } = await Promise.resolve(require('./server.js'));
-    const realPort = await start(PORT); // 主服务端口若被占会自动顺延
+    const realPort = await start(APP_PORT); // 主服务端口若被占会自动顺延
     splash.ready(realPort); // 告诉加载页真实地址，页面自己跳转
-    await sleep(2500); // 给页面时间拿到 target 并跳走
-    await splash.close();
+    // ⚠️ 加载页**不关闭**：窗口冷启动要 2~4 秒，早关会让页面永远问不到地址（之前就是这个 bug）。
+    //    它只占一个临时端口，留着零成本，反而让刷新页面也能重新拿到地址。
     log('就绪: http://127.0.0.1:' + realPort);
   } catch (e) {
     const msg = e && e.stack ? e.stack : String(e && e.message);
