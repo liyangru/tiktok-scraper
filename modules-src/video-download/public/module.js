@@ -14,136 +14,106 @@
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   function mount(root, ctx) {
-    const t = ctx.t;
-    root.innerHTML = `
-      <div class="dl-modes" id="dlModes">
-        <button data-mode="urls" class="on">${esc(t('dlModeUrls'))}</button>
-        <button data-mode="handle">${esc(t('dlModeHandle'))}</button>
-      </div>
-      <textarea id="dlInput" class="dl-input" rows="5"
-        placeholder="${esc(t('dlPlaceholder'))}"></textarea>
-      <div class="dl-row">
-        <select id="dlQuality" class="dl-select">
-          <option value="best">${esc(t('dlBest'))}</option>
-          <option value="1080p">1080p</option>
-          <option value="720p">720p</option>
-          <option value="540p">540p</option>
-        </select>
-        <button id="dlResolve" class="primary">${esc(t('dlResolve'))}</button>
-        <button id="dlFetch" disabled>${esc(t('dlDownload'))}</button>
-        <button id="dlOpen" disabled>${esc(t('dlOpenDir'))}</button>
-      </div>
-      <div id="dlStatus" class="dl-status"></div>
-      <div id="dlList" class="dl-list"></div>
-    `;
+  const t = ctx.t;
+  const esc2 = esc;
+  root.innerHTML = `
+    <div class="si-row">
+      <input id="dlInput" class="si-select" style="flex:1;min-width:280px" placeholder="${esc2(t('dlUnifiedHint'))}">
+      <select id="dlQuality" class="si-select" style="max-width:150px">
+        <option value="best" selected>${esc2(t('dlBest'))}</option>
+        <option value="hd">1080p</option>
+        <option value="sd">540p</option>
+      </select>
+      <button id="dlResolve" class="btn-like primary">${esc2(t('dlResolve'))}</button>
+    </div>
+    <div class="si-hint">${esc2(t('dlUnifiedTip'))}</div>
+    <div id="dlStatus" class="si-status"></div>
+    <div id="dlList" class="dl-list"></div>`;
 
-    let mode = 'urls';
-    let items = [];
-    let outDir = '';
+  const $ = (x) => root.querySelector(x);
+  const status = (m, cls) => { const e = $('#dlStatus'); e.textContent = m || ''; e.className = 'si-status' + (cls ? ' ' + cls : ''); };
+  let items = [];
 
-    const $ = (s) => root.querySelector(s);
-    const status = (msg, cls) => {
-      $('#dlStatus').textContent = msg || '';
-      $('#dlStatus').className = 'dl-status' + (cls ? ' ' + cls : '');
-    };
+  /** 自动识别：URL → 按链接解析；@handle 或纯用户名 → 按主页解析 */
+  function detect(input) {
+    const v = input.trim();
+    if (/^https?:\/\//i.test(v)) return 'urls';
+    return 'handle';
+  }
 
-    root.querySelectorAll('#dlModes button').forEach((b) =>
-      b.addEventListener('click', () => {
-        mode = b.dataset.mode;
-        root.querySelectorAll('#dlModes button').forEach((x) => x.classList.toggle('on', x === b));
-        $('#dlInput').placeholder = mode === 'handle' ? t('dlPlaceholderHandle') : t('dlPlaceholder');
-      })
-    );
-
-    async function resolve() {
-      const input = $('#dlInput').value.trim();
-      if (!input) return status(t('dlNeedInput'), 'err');
-      status(t('dlResolving'));
-      $('#dlResolve').disabled = true;
-      try {
-        const r = await fetch(`${API}/api/video-download/resolve`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode, input }),
-        }).then((x) => x.json());
-        if (r.error) throw new Error(r.error);
-        items = r.items || [];
-        render();
-        status(
-          t('dlResolved', { n: items.length }) + (r.errors && r.errors.length ? ' · ' + r.errors.join('; ') : ''),
-          items.length ? 'ok' : 'err'
-        );
-      } catch (e) {
-        status(e.message, 'err');
-      } finally {
-        $('#dlResolve').disabled = false;
-      }
-    }
-
-    function render() {
-      if (!items.length) {
-        $('#dlList').innerHTML = '';
-        $('#dlFetch').disabled = true;
-        return;
-      }
-      $('#dlList').innerHTML = items
-        .map((it, i) => {
-          const q = it.streams && it.streams.length ? it.streams[0].quality || '?' : '—';
-          const badge = it.watermarked ? `<span class="dl-warn">${esc(t('dlWatermark'))}</span>` : `<span class="dl-ok">${esc(t('dlClean'))}</span>`;
-          return `<label class="dl-item">
-            <input type="checkbox" data-i="${i}" checked>
-            <span class="dl-meta">
-              <b>@${esc(it.author || '?')}</b>
-              <span class="dl-desc">${esc(it.desc || t('dlNoCaption'))}</span>
-              <span class="dl-tags">${esc(it.duration ? it.duration + 's' : '')} · ${esc(q)} · ${badge}</span>
-            </span>
-          </label>`;
-        })
-        .join('');
-      $('#dlFetch').disabled = false;
-    }
-
-    async function download() {
-      const picked = [...root.querySelectorAll('#dlList input:checked')].map((c) => items[Number(c.dataset.i)]);
-      if (!picked.length) return status(t('dlNeedPick'), 'err');
-      status(t('dlDownloading', { n: picked.length }));
-      $('#dlFetch').disabled = true;
-      try {
-        const r = await fetch(`${API}/api/video-download/fetch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: picked, quality: $('#dlQuality').value }),
-        }).then((x) => x.json());
-        if (r.error) throw new Error(r.error);
-        outDir = r.outDir;
-        $('#dlOpen').disabled = false;
-        // 轮询进度
-        for (let i = 0; i < 600; i++) {
-          await new Promise((s) => setTimeout(s, 1000));
-          const j = await fetch(`${API}/api/video-download/jobs/${r.jobId}`).then((x) => x.json());
-          status(t('dlProgress', { done: j.done, total: j.total }));
-          if (j.status === 'done' || j.status === 'error') {
-            const ok = j.files.length;
-            const bad = j.errors.length;
-            status(t('dlFinished', { ok, bad }) + (bad ? ' · ' + j.errors.map((e) => e.error).join('; ') : ''), bad && !ok ? 'err' : 'ok');
-            break;
-          }
-        }
-      } catch (e) {
-        status(e.message, 'err');
-      } finally {
-        $('#dlFetch').disabled = false;
-      }
-    }
-
-    $('#dlResolve').addEventListener('click', resolve);
-    $('#dlFetch').addEventListener('click', download);
-    $('#dlOpen').addEventListener('click', () =>
-      fetch(`${API}/api/video-download/open-dir`, { method: 'POST' })
+  function renderList() {
+    if (!items.length) { $('#dlList').innerHTML = ''; return; }
+    $('#dlList').innerHTML = items
+      .map(
+        (it, i) => `<div class="dl-item" data-i="${i}">
+          <div class="dl-thumb">${it.cover ? `<img src="${esc2(it.cover)}" alt="">` : '<span class="dim">▶</span>'}</div>
+          <div class="dl-info">
+            <div class="dl-desc">${esc2((it.desc || t('dlNoCaption')).slice(0, 60))}</div>
+            <div class="si-hint">@${esc2(it.account || '')} · ${esc2(it.duration ? it.duration + 's' : '')} ${it.quality ? '· ' + esc2(it.quality) : ''}</div>
+          </div>
+          <button type="button" class="dl-go btn-like primary" data-i="${i}">${esc2(t('dlDownload'))}</button>
+        </div>`
+      )
+      .join('');
+    root.querySelectorAll('.dl-go').forEach((b) =>
+      b.addEventListener('click', () => download(items[Number(b.dataset.i)], b))
     );
   }
 
-  window.TTModule.register({
+  async function download(it, btn) {
+    btn.disabled = true;
+    const old = btn.textContent;
+    btn.textContent = t('dlResolving');
+    try {
+      const r = await fetch('/api/video-download/fetch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [it], quality: $('#dlQuality').value }),
+      }).then((x) => x.json());
+      if (r.error) throw new Error(r.error);
+      const poll = setInterval(async () => {
+        const job = await fetch(`/api/video-download/jobs/${r.jobId}`).then((x) => x.json()).catch(() => null);
+        if (!job) return;
+        if (job.status === 'done' || job.status === 'error') {
+          clearInterval(poll);
+          const ok = (job.files || []).length;
+          btn.disabled = false;
+          btn.textContent = old;
+          status(ok ? t('dlFinished', { ok, bad: 0 }) : t('dlFinished', { ok: 0, bad: (job.errors || []).length }) + ' · ' + (job.errors[0] || ''), ok ? 'ok' : 'err');
+        }
+      }, 1200);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = old;
+      status(e.message, 'err');
+    }
+  }
+
+  $('#dlResolve').addEventListener('click', async () => {
+    const input = $('#dlInput').value.trim();
+    if (!input) return status(t('dlNeedInput'), 'err');
+    const mode = detect(input);
+    status(t('dlResolving'));
+    $('#dlResolve').disabled = true;
+    try {
+      const r = await fetch('/api/video-download/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, input, quality: $('#dlQuality').value }),
+      }).then((x) => x.json());
+      if (r.error) throw new Error(r.error);
+      items = r.items || [];
+      renderList();
+      status(items.length ? t('dlResolved', { n: items.length }) : (r.errors || []).join('; '), items.length ? 'ok' : 'err');
+    } catch (e) {
+      status(e.message, 'err');
+    } finally {
+      $('#dlResolve').disabled = false;
+    }
+  });
+}
+
+window.TTModule.register({
     id: 'video-download',
     title: '视频下载',
     icon: '↓',

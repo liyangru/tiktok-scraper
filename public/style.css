@@ -534,3 +534,17 @@ thead th.on .ar { color: var(--ink); }
   border-radius: var(--r-pill); font-size: 12px; cursor: pointer; color: var(--ink-2);
 }
 .quick-btn:hover { color: var(--ink); border-color: var(--ink); background: var(--surface-2); }
+
+/* 下载模块：解析结果列表（每条视频旁直接下载） */
+.dl-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.dl-item {
+  display: flex; align-items: center; gap: 12px; padding: 8px 12px;
+  border: 1px solid var(--line); border-radius: var(--r); background: var(--panel);
+}
+.dl-thumb {
+  width: 48px; height: 64px; flex-shrink: 0; background: var(--surface-2);
+  border-radius: var(--r-sm); overflow: hidden; display: flex; align-items: center; justify-content: center;
+}
+.dl-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.dl-info { flex: 1; min-width: 0; }
+.dl-desc { font-size: 13px; color: var(--ink); margin-bottom: 4px; }

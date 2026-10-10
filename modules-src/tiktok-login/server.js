@@ -37,6 +37,28 @@ const set = (phase, message, extra) => {
   S.at = Date.now();
 };
 
+/** 账号注册表：data/profiles-tiktok-accounts.json */
+function accountsFile(ctx) {
+  return path.join(ctx.baseDir, 'data', 'profiles-tiktok-accounts.json');
+}
+function readAccounts(ctx) {
+  try {
+    const j = JSON.parse(fs.readFileSync(accountsFile(ctx), 'utf8'));
+    return Array.isArray(j.accounts) ? j.accounts : [];
+  } catch (_) {
+    return [];
+  }
+}
+function addAccount(ctx, name) {
+  if (!name || name === 'default') return;
+  const list = readAccounts(ctx);
+  if (!list.includes(name)) {
+    list.push(name);
+    fs.mkdirSync(path.dirname(accountsFile(ctx)), { recursive: true });
+    fs.writeFileSync(accountsFile(ctx), JSON.stringify({ accounts: list }, null, 2));
+  }
+}
+
 function profileDir(ctx, name) {
   const d = path.join(ctx.baseDir, 'data', 'profiles-tiktok', name || 'default');
   fs.mkdirSync(d, { recursive: true });
@@ -112,7 +134,10 @@ function startTicker(ctx) {
     if (!pageRef || !ctxRef) return;
     try {
       if (await isLoggedIn(ctxRef, pageRef)) {
+        addAccount(ctx, profileName);
         set('logged-in', '登录成功');
+        // 登录成功后自动关窗（用户要求：不要常驻浏览器窗口）
+        setTimeout(() => closeSession().catch(() => {}), 1500);
         return;
       }
       const txt = await pageText(pageRef);
@@ -148,8 +173,10 @@ async function ensureSession(ctx, name) {
   const chromium = ctx.core.chromium;
   if (!chromium) throw new Error('核心没有提供 chromium');
   const exe = ctx.core.scraper.resolveChromePath();
+  // ⚠️ 必须**有头**：TikTok 对无头会话不完成登录（用户实测扫码后无反应）。
+  //    登录用真实窗口，成功检测到后自动关窗。
   ctxRef = await chromium.launchPersistentContext(profileDir(ctx, profileName), {
-    headless: true,
+    headless: false,
     viewport: { width: 1280, height: 900 },
     args: ['--no-first-run', '--disable-dev-shm-usage'],
     ...(exe ? { executablePath: exe } : {}),
@@ -184,7 +211,7 @@ module.exports = {
       res.json({ ok: true, started: true });
       (async () => {
         try {
-          set('launching', '正在启动浏览器…', { qr: '', inputKind: '', account });
+          set('launching', '正在打开登录窗口…', { qr: '', inputKind: '', account });
           await closeSession();
           const c = await ensureSession(ctx, account);
           set('loading', '正在打开登录页…');
@@ -197,9 +224,9 @@ module.exports = {
             const qr = await findQr(page);
             if (qr) {
               const shot = await qr.screenshot();
-              set('waiting-scan', '请用手机 TikTok 扫码', { qr: shot.toString('base64'), inputKind: '' });
+              set('waiting-scan', '登录窗口已打开 —— 请用手机扫码，或改用账密登录', { qr: shot.toString('base64'), inputKind: '' });
             } else {
-              set('loading', '正在加载二维码…');
+              set('waiting-scan', '登录窗口已打开 —— 请在窗口中完成登录', { qr: '', inputKind: '' });
             }
           } else {
             set('need-input', '请输入账号与密码后提交', { inputKind: 'account' });
@@ -268,20 +295,14 @@ module.exports = {
       res.json({ ok: true });
     });
 
-    /** 已登录账号列表（多账号：每个 profile 目录 = 一个账号） */
+    /**
+     * 已登录账号列表。
+     * ⚠️ 绝不能直接列 data/profiles-tiktok 下的目录 —— 那是 Chromium 的 user-data-dir，
+     *    里面全是 ActorSafetyLists / CaptchaProviders 这类内部目录（踩过这个坑）。
+     *    只读我们自己维护的注册表。
+     */
     app.get('/api/tiktok-login/accounts', (req, res) => {
-      const root = path.join(ctx.baseDir, 'data', 'profiles-tiktok');
-      let names = [];
-      try {
-        names = fs.readdirSync(root).filter((f) => {
-          try {
-            return fs.statSync(path.join(root, f)).isDirectory();
-          } catch (_) {
-            return false;
-          }
-        });
-      } catch (_) {}
-      res.json({ accounts: names, current: profileName });
+      res.json({ accounts: readAccounts(ctx), current: profileName });
     });
 
     log('TikTok 登录模块已挂载：/api/tiktok-login/*（常驻会话 + 实时状态）');

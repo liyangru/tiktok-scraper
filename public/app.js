@@ -780,12 +780,24 @@ function currentJobId() {
 async function downloadOne(vid) {
   const r = currentRows().find((x) => String(x.vid) === String(vid));
   if (!r) return toast(t('dlNeedPick'), 'err');
-  toast(t('dlDownloading', { n: 1 }), 'ok');
+  toast(t('dlResolving'), 'ok');
   try {
+    let item = { vid: r.vid, url: r.url, desc: r.desc, account: r.account, playUrl: r.playUrl };
+    // 列表接口常常不下发直链 → 先去详情页解析（这一步是「没有可用的播放地址」的根治）
+    if (!item.playUrl) {
+      const rs = await fetch('/api/video-download/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'urls', input: r.url }),
+      }).then((x) => x.json());
+      if (rs.error) throw new Error(rs.error);
+      if (!rs.items || !rs.items.length) throw new Error((rs.errors || []).join('; ') || '解析不到播放地址');
+      item = rs.items[0];
+    }
     const res = await fetch('/api/video-download/fetch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: [r], quality: 'best' }),
+      body: JSON.stringify({ items: [item], quality: 'best' }),
     }).then((x) => x.json());
     if (res.error) throw new Error(res.error);
     const poll = setInterval(async () => {
@@ -793,10 +805,11 @@ async function downloadOne(vid) {
       if (!job) return;
       if (job.status === 'done' || job.status === 'error') {
         clearInterval(poll);
-        if (job.files && job.files.length) toast(t('dlFinished', { ok: job.files.length, bad: job.errors.length }), 'ok');
-        else toast(t('dlFinished', { ok: 0, bad: job.errors.length }), 'err');
+        const ok = (job.files || []).length;
+        const bad = (job.errors || []).length;
+        toast(t('dlFinished', { ok, bad }) + (bad ? ' · ' + job.errors[0] : ''), ok ? 'ok' : 'err');
       }
-    }, 2000);
+    }, 1500);
   } catch (e) {
     toast(e.message, 'err');
   }
@@ -878,17 +891,18 @@ initAiPeriod();
 async function initQuickAcc() {
   const host = $('#quickAcc');
   if (!host) return;
+  // 只取「历史里最近用过的 3 个账号」——不碰 profile 目录（那里面是浏览器内部文件）
   let names = [];
   try {
-    const d = await fetch('/api/tiktok-login/accounts').then((x) => x.json());
-    names = (d.accounts || []).filter((x) => x && x !== 'default');
-  } catch (_) {}
-  // 最近抓过的账号也一并列出
-  try {
     const jobs = await fetch('/api/jobs').then((x) => x.json());
-    for (const j of jobs || []) for (const h of j.handles || []) if (!names.includes(h)) names.push(h);
+    for (const j of jobs || []) {
+      for (const h of j.handles || []) {
+        if (h && !names.includes(h)) names.push(h);
+        if (names.length >= 3) break;
+      }
+      if (names.length >= 3) break;
+    }
   } catch (_) {}
-  names = [...new Set(names)].slice(0, 12);
   if (!names.length) { host.style.display = 'none'; return; }
   host.innerHTML =
     `<span class="quick-label">${esc(t('quickAcc'))}</span>` +
@@ -899,8 +913,8 @@ async function initQuickAcc() {
       const cur = ta.value.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
       if (!cur.includes(b.dataset.h)) cur.push(b.dataset.h);
       ta.value = cur.join('\n');
-      toast(t('quickAdded', { h: b.dataset.h }), 'ok');
     })
   );
 }
 initQuickAcc();
+

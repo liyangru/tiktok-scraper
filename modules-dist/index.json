@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-10T12:46:05.465Z",
+  "generatedAt": "2026-10-10T13:56:33.053Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -31,8 +31,8 @@
       "description": "导入卖家中心导出的「视频表现」xlsx，按视频ID与应用抓到的 TikTok 视频交叉匹配：匹配上=挂车（补 GMV/订单等商家指标），TikTok 有而卖家中心没有=没挂车，卖家中心有而 TikTok 没有=广告计划/混剪（自动剔除，不污染数据）。",
       "author": "liyangru",
       "requires": [],
-      "size": 14494,
-      "sha256": "5af3a6af6d417ed782971d8320df1051c7ab95bdf8957ba3e45ec63b9c01ef3b",
+      "size": 14673,
+      "sha256": "f159213b22fd8b28ff944051f6d121dcd6f8e4fd5d39c534860244bfb00b74df",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/seller-import-1.0.0.tar.gz"
     },
     {
@@ -42,8 +42,8 @@
       "description": "登录 TikTok 账号（扫码优先，可切账密/邮箱，全程无头不弹窗）。登录后可解锁：自己账号的创作中心数据（平均观看时长/完播率/流量来源/受众画像）、完整评论区、关注粉丝列表。",
       "author": "liyangru",
       "requires": [],
-      "size": 6132,
-      "sha256": "f17b84e7d55ce26b08112941cea0c95a90dda58e70d9ca18e41ed6f3201e532b",
+      "size": 7029,
+      "sha256": "1abf365d4c9e32f1020529b255bd34d33bc267bcd56e6e08a16d5b904cdc594d",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/tiktok-login-1.0.0.tar.gz"
     },
     {
@@ -53,8 +53,8 @@
       "description": "四种模式下载视频：单个链接 / 批量链接 / 整个主页 / 直接给 vid。优先取无水印源流与最高清晰度。",
       "author": "liyangru",
       "requires": [],
-      "size": 8338,
-      "sha256": "1b6e5257f28a77bdb6e1f0549d82dd8358ab5b1aa42910449a2d44c5b0b80d85",
+      "size": 8172,
+      "sha256": "59183aade486178aa4cda743892fdc12d4fe9426c028f246a2ee6c64a58d4678",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/video-download-1.0.0.tar.gz"
     }
   ]

@@ -326,9 +326,11 @@ const LOGIN_URL =
  * - 明确失败（密码错误等）→ 返回页面上的错误文案
  * - 其它（大概率是滑块验证码）→ 返回 needManual，调用方切回有头让人只处理验证
  */
-async function autoLogin(ctx, account, password) {
+async function autoLogin(ctx, account, password, opts) {
   const isEmail = /@/.test(account);
-  const c = await launchSeller(ctx, true);
+  // ⚠️ 手动登录用**有头**窗口：滑块/邮箱验证在真实窗口里完成（用户要求「遇到滑块就弹出来」）。
+  //    启动时的自动登录仍用无头，避免每次开机弹窗。
+  const c = await launchSeller(ctx, !(opts && opts.visible));
   try {
     const page = c.pages()[0] || (await c.newPage());
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -378,8 +380,9 @@ async function autoLogin(ctx, account, password) {
     }
     return { manual: '登录超时' };
   } finally {
-    // 结果处理完由调用方决定是否保留；这里一律关掉无头实例（profile 已保存状态）
-    await c.close().catch(() => {});
+    // 无头模式：结果出来就关（profile 已存状态）
+    // 有头模式：**不关**，留给用户处理滑块/验证；成功检测到后由 needManual 分支或用户手动关
+    if (!(opts && opts.visible)) await c.close().catch(() => {});
   }
 }
 
@@ -622,7 +625,7 @@ module.exports = {
           await c.close().catch(() => {});
         }
         if (req.body && req.body.remember) writeCreds(account, password);
-        const r = await autoLogin(ctx, account, password);
+        const r = await autoLogin(ctx, account, password, { visible: true });
         if (r.ok) return res.json({ ok: true, loggedIn: true, note: '登录成功（全程无头，没有弹窗）。登录态已保存。' });
         if (r.fail) return res.status(400).json({ error: r.fail });
         // 需要人工（大概率滑块验证）→ 切回有头，复用同一 profile 让用户只处理验证
