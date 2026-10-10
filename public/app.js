@@ -594,3 +594,55 @@ $('#settingsModal').addEventListener('click', async (e) => {
 $('#settingsBtn').addEventListener('click', openSettings);
 $('#settingsClose').addEventListener('click', closeSettings);
 $('#modRefresh').addEventListener('click', loadModules);
+
+/* ================= 模块前端：注册表 + 面板装载 ================= */
+
+/** 模块用它把自己注册进来；主程序负责挂载到 #module-panels */
+window.TTModule = (() => {
+  const regs = new Map();
+  return {
+    register(def) { regs.set(def.id, def); },
+    get(id) { return regs.get(id); },
+    list() { return [...regs.values()]; },
+  };
+})();
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src;
+    s.onload = res;
+    s.onerror = () => rej(new Error('加载失败 ' + src));
+    document.head.appendChild(s);
+  });
+}
+
+/** 把已启用模块的前端面板挂进主界面（单个失败不影响其它） */
+async function mountModulePanels() {
+  const host = $('#module-panels');
+  if (!host) return;
+  let data;
+  try { data = await fetch('/api/modules').then((x) => x.json()); } catch (_) { return; }
+  const enabled = (data.modules || []).filter((m) => m.installed && m.enabled);
+  for (const m of enabled) {
+    const el = document.createElement('section');
+    el.className = 'panel module-panel';
+    el.dataset.module = m.id;
+    const h = document.createElement('h2');
+    h.className = 'sec-title';
+    h.textContent = m.name;
+    const body = document.createElement('div');
+    el.append(h, body);
+    host.appendChild(el);
+    try {
+      await loadScript(`/modules/${m.id}/module.js`);
+      const reg = window.TTModule.get(m.id);
+      if (reg && typeof reg.mount === 'function') reg.mount(body, { t });
+      else body.innerHTML = '<div class="si-status">' + esc(t('moduleNoFrontend')) + '</div>';
+    } catch (e) {
+      body.innerHTML = '<div class="si-status">' + esc(m.name) + '：' + esc(e.message) + '</div>';
+    }
+  }
+}
+
+mountModulePanels();

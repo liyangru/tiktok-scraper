@@ -71,6 +71,7 @@ window.I18N = {
     modRestartHint: '重启应用后生效',
     modToggleToast: '已更新模块状态',
     modDeletedToast: '已删除模块',
+    moduleNoFrontend: '该模块没有提供界面',
     ecTitle: '挂车视频 vs 非挂车视频',
     ecMetric: '指标',
     ecYes: '挂车视频',

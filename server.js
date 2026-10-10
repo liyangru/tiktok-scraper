@@ -81,12 +81,15 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 已安装模块的前端资源 → /modules/<id>/…
+// ⚠️ app.use('/modules') 会把挂载前缀从 req.url 里剥掉，所以 req.url 已是 /<id>/…；
+//    还要再把 <id> 这一段剥掉，才能映射到 <模块>/public/xxx —— 不剥就 404。
 app.use('/modules', (req, res, next) => {
-  const seg = String(req.path).split('/').filter(Boolean);
+  const seg = String(req.url).split('/').filter(Boolean);
   const id = seg[0];
   if (!id) return next();
   const dir = modules.publicDirOf(id);
   if (!dir) return res.status(404).end();
+  req.url = '/' + seg.slice(1).join('/');
   express.static(dir)(req, res, next);
 });
 
@@ -488,7 +491,8 @@ const MODULE_CTX = {
   settings,
   envfile,
   log: (m) => console.log(`  [module] ${m}`),
-  core: { scraper, report },
+  /* ⚠️ 模块能 require 的库只限这里给的 —— pkg 打包后模块在快照外，自己 require 不到核心依赖 */
+  core: { scraper, report, exceljs: require('exceljs'), envfile },
 };
 
 /** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */
