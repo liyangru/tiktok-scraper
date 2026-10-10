@@ -470,3 +470,7 @@ window.detectLang = function () {
   if (nav.startsWith('th')) return 'th';
   return 'en';
 };
+/* TikTok 登录模块文案 */
+Object.assign(window.I18N.zh, { tlQr: '扫码登录', tlPwd: '账密登录', tlClickFirst: '点这里获取二维码', tlValue: '登录后可解锁：创作中心数据（平均观看时长/完播率/流量来源/受众画像）、完整评论区、关注粉丝列表', tlOk: '✅ TikTok 登录成功', tlAlready: '✅ 已登录' });
+Object.assign(window.I18N.th, { tlQr: 'สแกนเข้าสู่ระบบ', tlPwd: 'บัญชี/รหัสผ่าน', tlClickFirst: 'กดเพื่อรับ QR', tlValue: 'ล็อกอินแล้วจะปลดล็อก：ข้อมูลศูนย์ครีเอเตอร์ / คอมเมนต์ทั้งหมด / รายชื่อผู้ติดตาม', tlOk: '✅ เข้าสู่ระบบสำเร็จ', tlAlready: '✅ ล็อกอินอยู่แล้ว' });
+Object.assign(window.I18N.en, { tlQr: 'QR login', tlPwd: 'Password login', tlClickFirst: 'Click to get the QR code', tlValue: 'Unlocks: Creator Center metrics, full comments, follower lists', tlOk: '✅ Logged in', tlAlready: '✅ Already logged in' });

@@ -452,3 +452,11 @@ thead th.on .ar { color: var(--ink); }
 .dk { color: var(--ink-3); flex-shrink: 0; }
 .dv { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .d-hist { font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--line-soft); padding-top: 8px; }
+
+/* TikTok 登录模块 */
+.tl-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tl-tabs button { padding: 8px 16px; border: 1px solid var(--line); background: var(--panel); border-radius: var(--r-pill); font-size: 13px; cursor: pointer; color: var(--ink-2); }
+.tl-tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); font-weight: 650; }
+.tl-qr { text-align: center; padding: 16px; background: var(--surface-2); border-radius: var(--r); min-height: 180px; cursor: pointer; }
+.tl-qr .tl-img { width: 200px; height: 200px; image-rendering: pixelated; background: #fff; border-radius: var(--r-sm); }
+.tl-tabs button, .tl-qr { border: 1px solid var(--line); }

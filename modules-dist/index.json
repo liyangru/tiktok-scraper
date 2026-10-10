@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-10T10:12:58.197Z",
+  "generatedAt": "2026-10-10T10:20:40.273Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -34,6 +34,17 @@
       "size": 13938,
       "sha256": "c9c071a56893fc577a9d92e04b7f9449e25d5ad93fce792bda22905831336442",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/seller-import-1.0.0.tar.gz"
+    },
+    {
+      "id": "tiktok-login",
+      "name": "TikTok 账号登录",
+      "version": "1.0.0",
+      "description": "登录 TikTok 账号（扫码优先，可切账密/邮箱，全程无头不弹窗）。登录后可解锁：自己账号的创作中心数据（平均观看时长/完播率/流量来源/受众画像）、完整评论区、关注粉丝列表。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 3984,
+      "sha256": "05eea8384e9d469dcd2fcfdf8f93377abaedb3cdfc573182507d0d5c70f0b15e",
+      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/tiktok-login-1.0.0.tar.gz"
     },
     {
       "id": "video-download",
