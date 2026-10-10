@@ -1136,3 +1136,15 @@ async function initStorage() {
 
 initPlayer();
 initStorage();
+
+
+/* 版本标识：确认当前跑的是哪一版（避免「更新没生效」的困惑） */
+async function showAppVer() {
+  const el = document.getElementById('appVer');
+  if (!el) return;
+  try {
+    const h = await fetch('/api/health', { cache: 'no-store' }).then((x) => x.json());
+    el.textContent = `v${h.version || '?'} · ${h.build || ''}`;
+  } catch (_) {}
+}
+showAppVer();

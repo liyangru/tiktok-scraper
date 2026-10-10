@@ -81,7 +81,18 @@ app.use((req, res, next) => {
   res.status(401).send(loginPage(req.query.token !== undefined));
 });
 
-app.use(express.static(path.join(__dirname, 'public')));
+/**
+ * ⚠️ 自有前端资源**禁缓存**。
+ * express.static 默认允许缓存 → 更新后应用窗口仍用旧 app.js/index.html，
+ * 用户会以为「更新没生效」（实际踩过）。
+ */
+app.use(
+  express.static(path.join(__dirname, 'public'), {
+    etag: false,
+    lastModified: false,
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-store, must-revalidate'),
+  })
+);
 
 // 已安装模块的前端资源 → /modules/<id>/…
 // ⚠️ app.use('/modules') 会把挂载前缀从 req.url 里剥掉，所以 req.url 已是 /<id>/…；
@@ -93,7 +104,11 @@ app.use('/modules', (req, res, next) => {
   const dir = modules.publicDirOf(id);
   if (!dir) return res.status(404).end();
   req.url = '/' + seg.slice(1).join('/');
-  express.static(dir)(req, res, next);
+  express.static(dir, {
+    etag: false,
+    lastModified: false,
+    setHeaders: (r2) => r2.setHeader('Cache-Control', 'no-store, must-revalidate'),
+  })(req, res, next);
 });
 
 /* ================= 设置 ================= */
@@ -240,6 +255,7 @@ function todayBangkok() {
 
 /** 健康检查 */
 const APP_VERSION = require('./package.json').version;
+const BUILD_STAMP = new Date().toISOString().slice(0, 16).replace('T', ' ');
 app.get('/api/settings/storage', (req, res) => {
   const c = settings.getCore ? settings.getCore() : {};
   res.json({ downloadDir: (c && c.downloadDir) || '' });
@@ -271,6 +287,7 @@ app.get('/api/health', (req, res) => {
     concurrency: CONCURRENCY,
     headless: process.env.BROWSER_HEADLESS === '1',
     version: APP_VERSION,
+    build: BUILD_STAMP,
   });
 });
 

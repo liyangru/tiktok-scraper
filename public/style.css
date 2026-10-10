@@ -578,3 +578,9 @@ thead th.on .ar { color: var(--ink); }
 .grp-name { font-weight: 650; color: var(--ink); font-size: 13px; margin-right: 12px; }
 .grp-meta { font-size: 12px; color: var(--ink-3); }
 #grpBtn.on, #ecCompareBtn.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* 版本标识（右下角） */
+.app-ver {
+  position: fixed; right: 12px; bottom: 8px; font-size: 12px;
+  color: var(--ink-3); pointer-events: none; user-select: none;
+}
