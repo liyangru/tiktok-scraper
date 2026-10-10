@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-10T10:20:40.273Z",
+  "generatedAt": "2026-10-10T12:32:51.823Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -9,8 +9,8 @@
       "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌级解读；选一条视频抽帧后由视觉模型生成复刻脚本（hook/分镜/文案/CTA/发布建议）。需要先在 .env 配置 LLM_BASE_URL / LLM_API_KEY。",
       "author": "liyangru",
       "requires": [],
-      "size": 4944,
-      "sha256": "f4048e0f9802bdf9a21fe5fb8651c30003773467685161952097fd1eec023846",
+      "size": 6209,
+      "sha256": "47ca4fee644238efe608d17e774e0c6d1fe333130d03af11cd70590f68ef4b16",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/ai-analyst-1.0.0.tar.gz"
     },
     {

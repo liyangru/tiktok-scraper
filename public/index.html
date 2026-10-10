@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>TikTok 多账号数据抓取</title>
+<title>TikTok 数据分析</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
@@ -59,16 +59,6 @@
           <button type="button" data-range="all" style="font-size:11.5px;padding:4px 9px" data-i18n="all"></button>
         </div>
 
-        <label class="fld">
-          <span><span data-i18n="concurrency">并发数</span>
-            <em style="font-weight:400;color:#7f7f7f" data-i18n="concurrencyHint"></em></span>
-          <select id="conc">
-            <option value="1" selected data-i18n="conc1"></option>
-            <option value="2" data-i18n="conc2"></option>
-            <option value="3" data-i18n="conc3"></option>
-          </select>
-        </label>
-
         <button type="button" id="startBtn" class="primary wide" data-i18n="start"></button>
         <div style="margin-top:8px">
           <button type="button" id="stopBtn" class="wide" disabled data-i18n="stop"></button>
@@ -76,7 +66,6 @@
 
         <div class="notice" style="margin:14px 0 0;font-size:11.5px">
           <span data-i18n="tip" data-i18n-html="1"></span>
-          <div style="margin-top:8px"><span data-i18n="concNote" data-i18n-html="1"></span></div>
         </div>
       </div>
 

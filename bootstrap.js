@@ -112,8 +112,10 @@ async function preloadBundledModules() {  if (!isPkg) return;
   for (const entry of entries) {
     const id = entry.id;
     const archive = path.join(snapDir, `${id}-${entry.version}.tar.gz`);
-    const manifest = path.join(modDir, id, 'module.json');
-    if (!id || !fs.existsSync(archive) || fs.existsSync(manifest)) continue; // 不覆盖用户状态
+    if (!id || !fs.existsSync(archive)) continue;
+    // 总是用 exe 内置的版本覆盖（自愈：修复本地缺文件/半装的模块）。
+    // 用户自己的 settings.json 开关不受影响（那只记录 enabled/config）。
+    try { fs.rmSync(path.join(modDir, id), { recursive: true, force: true }); } catch (_) {}
     try {
       await tar.x({ file: archive, cwd: modDir });
       log('预装模块:', id);
@@ -168,7 +170,10 @@ function openAppWindow(url) {
       `--user-data-dir=${profile}`,
       '--no-first-run',
       '--no-default-browser-check',
-      '--disable-features=ChromeForTestingBanner',
+      '--disable-features=ChromeForTestingBanner,Translate,AcceptCHFrame,MediaRouter',
+      '--test-type', // 抑制 Chrome for Testing 的「仅适用于自动测试」提示条
+      '--disable-session-crashed-bubble',
+      '--hide-crash-restore-bubble',
       '--window-size=1440,960',
     ], { detached: true, stdio: 'ignore' });
     child.unref();
