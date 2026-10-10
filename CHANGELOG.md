@@ -26,6 +26,17 @@
 
 ## [Unreleased]
 
+### 新增
+
+- **更多数据字段（模块 1）**：视频明细从 17 列扩到 23 列，新增
+  **转发数、视频ID、语种、挂车、音乐、分辨率**；账号汇总新增**总转发**。
+  - **改用 `statsV2`**：它比 `stats` 多一个 `repostCount`（转发数），且值是字符串，已统一转数字。
+  - **挂车检测**：`isECVideo` 字段直接标记电商视频（实测某账号 60 条里 37 条为真）—— 不需要 Seller Center 授权就能知道哪些视频挂了车。
+  - **语种**：`textLanguage`，可直接看内容语种分布。
+  - **分辨率修正**：`video.definition` 只是网页播放档位（常年 540p），真实可用最高清晰度取自 `bitrateInfo[].GearName`（形如 `normal_1080`）。
+  - 同时抽出但不进表格的字段：`playUrl`（播放地址，供下载功能用）、`qualities`（可下载清晰度档位）、`isAd`、`isAIGC`、`musicOriginal`。
+  - `lib/report.js` 新增导出 `pickPlayUrl` / `bestQuality` / `qualityList`，供后续下载功能复用。
+
 ### 变更
 
 - **Release 说明自动从本文件抽取**：`release.yml` 会读取 tag 对应版本（如 `v1.0.2` → `## [1.0.2]`）的段落，拼上下载表后作为 Release 正文；抽不到就回退成按 commit 自动生成。以后每个版本的改动都会自动记录在 Release 里。

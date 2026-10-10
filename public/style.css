@@ -211,6 +211,10 @@ td.desc { max-width: 480px; }
 td.desc .d { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 td a { color: var(--ink-3); text-decoration: none; border-bottom: 1px solid var(--line); white-space: nowrap; }
 td a:hover { color: var(--ink); border-color: var(--ink); }
+/* 挂车标记：有就粗体「是」，没有就弱化破折号 —— 不用颜色，靠字重区分 */
+td.ctr { text-align: center; white-space: nowrap; font-size: 12px; }
+td.ctr .ec { font-weight: 700; color: var(--ink); }
+td.ctr .dim { color: var(--ink-4); }
 
 /* ---------- 结果工具条 ---------- */
 .res-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 4px 0 16px; }

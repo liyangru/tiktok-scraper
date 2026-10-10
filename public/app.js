@@ -397,8 +397,10 @@ function renderResults() {
       <td class="num">${fmt(r.comments)}</td>
       <td class="num">${fmt(r.shares)}</td>
       <td class="num">${fmt(r.saves)}</td>
+      <td class="num">${fmt(r.reposts)}</td>
       <td class="num">${(r.inter * 100).toFixed(2)}%</td>
       <td class="num">${r.duration}s</td>
+      <td class="ctr">${r.isEC ? `<span class="ec">${esc(t('yesShort'))}</span>` : '<span class="dim">—</span>'}</td>
       <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('colOpen'))}</a></td>
     </tr>`
     )
