@@ -32,9 +32,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -67,7 +67,7 @@ jobs:
           cp release/*.exe out/
           ls -la out/
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: win
           path: out/*
@@ -87,9 +87,9 @@ jobs:
           - arch: x64
             runner: macos-15-intel
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
@@ -118,7 +118,7 @@ jobs:
             echo "已签名: $app"
           done
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: mac-${{ matrix.arch }}
           path: release-mac/*.zip
@@ -130,7 +130,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 打包源码 + 启动脚本
         run: |
@@ -156,7 +156,7 @@ jobs:
           tar -czf "${PKG}.tar.gz" -C /tmp "${PKG}"
           ls -la "${PKG}.tar.gz"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: server-bundle
           path: tiktok-scraper-server-*.tar.gz
@@ -169,7 +169,7 @@ jobs:
     needs: [win, mac, server-bundle]
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: assets
           merge-multiple: true
