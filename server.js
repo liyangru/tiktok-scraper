@@ -6,14 +6,22 @@ const path = require('path');
 const fs = require('fs');
 const { exec, spawn } = require('child_process');
 const express = require('express');
+const envfile = require('./lib/envfile');
 const scraper = require('./lib/scraper');
 const report = require('./lib/report');
+
+// 可写基目录：单文件 exe（pkg）下 __dirname 是只读快照，必须由 bootstrap 注入 TT_BASE_DIR
+const BASE_DIR = process.env.TT_BASE_DIR || __dirname;
+
+// ⚠️ 必须在读取任何配置之前加载 .env —— 密钥只放在那里，不进 settings.json
+envfile.load(path.join(BASE_DIR, '.env'));
+
+const settings = require('./lib/settings');
+const modules = require('./lib/modules');
 
 const PORT = parseInt(process.env.PORT || '8899', 10);
 const HOST = process.env.HOST || '127.0.0.1';
 const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
-// 可写基目录：单文件 exe（pkg）下 __dirname 是只读快照，必须由 bootstrap 注入 TT_BASE_DIR
-const BASE_DIR = process.env.TT_BASE_DIR || __dirname;
 const DATA_DIR = path.join(BASE_DIR, 'data', 'jobs');
 const CONCURRENCY = parseInt(process.env.CONCURRENCY || '1', 10);
 const MAX_SCROLLS = parseInt(process.env.MAX_SCROLLS || '400', 10);
@@ -71,6 +79,116 @@ app.use((req, res, next) => {
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// 已安装模块的前端资源 → /modules/<id>/…
+app.use('/modules', (req, res, next) => {
+  const seg = String(req.path).split('/').filter(Boolean);
+  const id = seg[0];
+  if (!id) return next();
+  const dir = modules.publicDirOf(id);
+  if (!dir) return res.status(404).end();
+  express.static(dir)(req, res, next);
+});
+
+/* ================= 设置 ================= */
+
+app.get('/api/settings', (req, res) => {
+  const core = settings.getCore();
+  res.json({
+    core,
+    /* 密钥只回「是否已配置」，绝不回显明文 */
+    secrets: {
+      TTS_APP_KEY: envfile.has(settings.ENV_FILE, 'TTS_APP_KEY'),
+      TTS_APP_SECRET: envfile.has(settings.ENV_FILE, 'TTS_APP_SECRET'),
+      TTS_ACCESS_TOKEN: envfile.has(settings.ENV_FILE, 'TTS_ACCESS_TOKEN'),
+      TTM_APP_ID: envfile.has(settings.ENV_FILE, 'TTM_APP_ID'),
+      TTM_APP_SECRET: envfile.has(settings.ENV_FILE, 'TTM_APP_SECRET'),
+    },
+    baseDir: BASE_DIR,
+    envFile: settings.ENV_FILE,
+  });
+});
+
+app.post('/api/settings', (req, res) => {
+  const b = req.body || {};
+  if (b.core && typeof b.core === 'object') settings.setCore(b.core);
+  // 密钥写 .env，不落 settings.json
+  if (b.secrets && typeof b.secrets === 'object') {
+    const patch = {};
+    for (const [k, v] of Object.entries(b.secrets)) {
+      if (/^[A-Z_][A-Z0-9_]*$/.test(k) && typeof v === 'string' && v.trim()) patch[k] = v.trim();
+    }
+    if (Object.keys(patch).length) envfile.write(settings.ENV_FILE, patch);
+  }
+  res.json({ ok: true, core: settings.getCore() });
+});
+
+/* ================= 模块 ================= */
+
+app.get('/api/modules', async (req, res) => {
+  const installed = modules.installedMap();
+  let index = [];
+  let indexError = '';
+  try {
+    index = await modules.fetchIndex();
+  } catch (e) {
+    indexError = e.message;
+  }
+  const list = index.map((m) => ({
+    ...m,
+    installed: !!installed[m.id],
+    installedVersion: installed[m.id] ? installed[m.id].version : '',
+    enabled: !!installed[m.id] && settings.isEnabled(m.id),
+    updateAvailable: !!(installed[m.id] && m.version && installed[m.id].version !== m.version),
+  }));
+  // 已装但索引里没有的（本地开发的模块）也列出来
+  for (const [id, man] of Object.entries(installed)) {
+    if (!list.some((x) => x.id === id)) {
+      list.push({ ...man, installed: true, installedVersion: man.version, enabled: settings.isEnabled(id), local: true });
+    }
+  }
+  res.json({ indexError, modules: list, dir: modules.MODULES_DIR });
+});
+
+app.post('/api/modules/:id/install', async (req, res) => {
+  const id = req.params.id;
+  try {
+    const index = await modules.fetchIndex();
+    const entry = index.find((m) => m.id === id);
+    if (!entry) return res.status(404).json({ error: `索引里没有模块 ${id}` });
+    const man = await modules.install(entry);
+    res.json({ ok: true, module: man });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/modules/:id', (req, res) => {
+  const id = req.params.id;
+  if (settings.isEnabled(id)) {
+    const r = modules.disableSafely(id);
+    if (!r.ok) return res.status(409).json({ error: `被这些已启用模块依赖，无法卸载：${r.blockedBy.join(', ')}` });
+  }
+  const ok = modules.uninstall(id);
+  res.json({ ok, restartRequired: true });
+});
+
+app.post('/api/modules/:id/toggle', (req, res) => {
+  const id = req.params.id;
+  const want = !!(req.body && req.body.enabled);
+  if (want) {
+    const r = modules.enableWithDeps(id);
+    if (r.missing.length) {
+      return res.status(409).json({ error: `缺少依赖模块：${r.missing.join(', ')}`, enabled: r.enabled });
+    }
+    return res.json({ ok: true, enabled: r.enabled, restartRequired: true });
+  }
+  const r = modules.disableSafely(id);
+  if (!r.ok) return res.status(409).json({ error: `这些已启用模块依赖它，请先停用它们：${r.blockedBy.join(', ')}` });
+  res.json({ ok: true, enabled: [], restartRequired: true });
+});
+
+/* ================= 核心 ================= */
 
 /** 内存中的任务表 */
 const jobs = new Map();
@@ -350,6 +468,24 @@ function openBrowser(host, port) {
 }
 
 /** 端口被占用时自动往后找空闲端口，避免和其它项目撞车。resolve 实际监听端口 */
+/* ================= 模块加载 ================= */
+
+/**
+ * 模块能拿到的核心能力。
+ * ⚠️ 模块在**主进程内**运行，不是沙箱 —— 所以只从本仓库安装模块。
+ */
+const MODULE_CTX = {
+  baseDir: BASE_DIR,
+  dataDir: DATA_DIR,
+  settings,
+  envfile,
+  log: (m) => console.log(`  [module] ${m}`),
+  core: { scraper, report },
+};
+
+/** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */
+const LOADED_MODULES = modules.loadEnabled(app, MODULE_CTX, (m) => console.log(`  ⚠ 模块：${m}`));
+
 function listen(port, tries = 12) {
   return new Promise((resolve, reject) => {
     const srv = app.listen(port, HOST);
@@ -362,6 +498,7 @@ function listen(port, tries = 12) {
       console.log(`  浏览器: ${chrome || '未找到（请设置 CHROME_PATH）'}`);
       console.log(`  并发数: ${CONCURRENCY}   有头模式: ${process.env.BROWSER_HEADLESS === '1' ? '否' : '是'}`);
       console.log(`  访问口令: ${ACCESS_TOKEN ? '已启用' : '未启用（仅限本机使用）'}`);
+      console.log(`  模块: ${LOADED_MODULES.length ? LOADED_MODULES.join(', ') : '无（可在设置里下载）'}`);
       console.log('');
       // 仅「直接运行 server.js」时自动开界面；被 Electron 等宿主 require 时由宿主自己开窗
       if (require.main === module) openBrowser(HOST, port);
@@ -383,7 +520,7 @@ function start(portOverride) {
   return listen(portOverride || PORT);
 }
 
-module.exports = { app, start };
+module.exports = { app, start, modules, settings };
 
 if (require.main === module) {
   start().catch((e) => {

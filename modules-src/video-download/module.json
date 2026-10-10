@@ -1,0 +1,15 @@
+{
+  "id": "video-download",
+  "name": "视频下载",
+  "version": "1.0.0",
+  "description": "四种模式下载视频：单个链接 / 批量链接 / 整个主页 / 直接给 vid。优先取无水印源流与最高清晰度。",
+  "author": "liyangru",
+  "core": ">=1.0.0",
+  "requires": [],
+  "permissions": ["network", "browser"],
+  "config": [
+    { "key": "outDir", "label": "下载目录", "type": "path", "default": "", "hint": "留空则用系统「下载」目录下的 TikTokScraper/" },
+    { "key": "quality", "label": "清晰度", "type": "select", "default": "best", "options": ["best", "1080p", "720p", "540p"] }
+  ],
+  "secretConfig": []
+}
