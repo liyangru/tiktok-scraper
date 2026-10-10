@@ -77,6 +77,38 @@ function digItem(json) {
 }
 
 /** 在视频详情页里拦截 item detail 响应 */
+
+/**
+ * 用公开解析服务拿无水印直链（主路径）。
+ * 为什么用它：① 不依赖浏览器会话 ② 不用跟 TikTok 的签名/风控纠缠
+ *   ③ 实测返回 hdplay/play/wmplay + 时长 + 封面，直接可下。
+ * 失败时由调用方回退到「详情页解析」。
+ */
+async function resolveViaTikwm(core, url) {
+  const api = 'https://www.tikwm.com/api/?url=' + encodeURIComponent(url);
+  const r = await fetch(api, {
+    headers: { 'User-Agent': (core && core.scraper && core.scraper.UA) || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36', Accept: 'application/json' },
+  });
+  if (!r.ok) throw new Error('tikwm HTTP ' + r.status);
+  const j = await r.json();
+  if (j.code !== 0 || !j.data) throw new Error(j.msg || 'tikwm 返回异常');
+  const d = j.data;
+  const best = d.hdplay || d.play || d.wmplay;
+  if (!best) throw new Error('tikwm 未返回播放地址');
+  return {
+    vid: String(d.id || ''),
+    url,
+    desc: String(d.title || '').replace(/\n/g, ' ').trim(),
+    author: (d.author && d.author.unique_id) || '',
+    duration: d.duration || 0,
+    cover: d.cover || '',
+    streams: [],
+    playUrl: best,
+    watermarked: !(d.hdplay || d.play),
+    source: 'tikwm',
+  };
+}
+
 async function resolveOne(ctx, ref, log) {
   const page = await ctx.newPage();
   try {
@@ -233,6 +265,22 @@ module.exports = {
           const session = await core.scraper.openSession(0);
           try {
             for (const ref of refs) {
+              // ① 主路径：公开解析服务（不依赖浏览器，最快最稳）
+              const pageUrl = ref.short
+                ? ref.short
+                : ref.handle
+                  ? `https://www.tiktok.com/@${ref.handle}/video/${ref.vid}`
+                  : `https://www.tiktok.com/@_/video/${ref.vid}`;
+              try {
+                const fast = await resolveViaTikwm(core, pageUrl);
+                if (fast.playUrl) {
+                  out.push(fast);
+                  continue;
+                }
+              } catch (e) {
+                log(`tikwm 解析失败，回退详情页：${e.message}`);
+              }
+              // ② 回退：详情页解析（浏览器会话）
               try {
                 const it = await resolveOne(session, ref, log);
                 if (!it) {
