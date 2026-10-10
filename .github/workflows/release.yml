@@ -177,36 +177,80 @@ jobs:
       - name: 列出资产
         run: ls -la assets/
 
+      - name: 生成 Release 说明（从 CHANGELOG.md 抽取本版段落）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          mkdir -p /tmp/rel
+          NOTES=/tmp/rel/notes.md
+          : > "$NOTES"
+
+          # 抽 CHANGELOG 里 "## [<版本>]" 到下一个 "## " 之间的内容
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$VER" '
+              index($0, "## [" v "]") == 1 { f = 1; next }
+              f && /^## / { exit }
+              f { print }
+            ' CHANGELOG.md > "$NOTES" || true
+          fi
+
+          # 抽不到就回退成按 commit 自动生成
+          if [ ! -s "$NOTES" ]; then
+            echo "> ⚠️ 本版未在 CHANGELOG.md 中找到 \`## [$VER]\` 条目，以下按 commit 自动生成。"
+            echo ""
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              -f tag_name="$TAG" --jq '.body' >> "$NOTES" || true
+          fi
+
+          echo "--- 抽取到的说明 ---"
+          cat "$NOTES"
+
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+
+          # 下载表放最前面（方便直接用），下面接 CHANGELOG 里抽出来的本版变更
+          {
+            echo "## 下载"
+            echo ""
+            echo "| 平台 | 文件 | 说明 |"
+            echo "|---|---|---|"
+            echo "| Windows | \`TikTokScraper-${VER}.exe\` | Electron 桌面应用，双击即用（推荐） |"
+            echo "| Windows | \`tiktok-scraper.exe\` | pkg 单文件便携版（备选） |"
+            echo "| macOS Apple Silicon | \`TikTokScraper-${VER}-arm64-mac.zip\` | M 系列芯片 |"
+            echo "| macOS Intel | \`TikTokScraper-${VER}-x64-mac.zip\` | Intel 芯片 |"
+            echo "| 本地 / 服务器 | \`tiktok-scraper-server-${VER}.tar.gz\` | 源码 + \`start.sh\`，需 Node 18+ |"
+            echo ""
+            echo "所有发行版都**自带浏览器**，不依赖系统 Chrome、运行时不联网下载。"
+            echo ""
+            echo "### 首次运行"
+            echo ""
+            echo "- **Windows**：双击 exe。首次启动会把自带 Chromium 解压到同目录的 \`tiktok-scraper-data/\`（约 440MB，几秒），之后秒开。"
+            echo "- **macOS**：解压后把 \`.app\` 拖进「应用程序」。未做 Apple 公证，首次打开请**右键 → 打开**，或执行 \`xattr -dr com.apple.quarantine /Applications/TikTokScraper.app\`"
+            echo "- **服务器**：解压后 \`./start.sh\`。"
+            echo ""
+            echo "---"
+            echo ""
+            echo "## 本版更新"
+            echo ""
+            cat /tmp/rel/notes.md
+            echo ""
+            echo "---"
+            echo ""
+            echo "完整更新日志见 [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md)。"
+          } > /tmp/rel/final.md
+
           gh release create "$TAG" \
             --repo "${GITHUB_REPOSITORY}" \
             --title "TikTok 多账号数据抓取 ${TAG}" \
-            --notes "$(cat <<'EOF'
-          ## 下载
-
-          | 平台 | 文件 | 说明 |
-          |---|---|---|
-          | Windows | `TikTokScraper-*.exe` | Electron 桌面应用，双击即用（推荐） |
-          | Windows | `tiktok-scraper.exe` | pkg 单文件便携版（备选） |
-          | macOS Apple Silicon | `TikTokScraper-*-arm64-mac.zip` | M 系列芯片 |
-          | macOS Intel | `TikTokScraper-*-x64-mac.zip` | Intel 芯片 |
-          | 本地 / 服务器 | `tiktok-scraper-server-*.tar.gz` | 源码 + `start.sh`，需 Node 18+ |
-
-          ## 首次运行
-
-          - **Windows**：双击 exe。首次启动会把自带 Chromium 解压到同目录的 `tiktok-scraper-data/`（约 440MB，几秒），之后秒开。
-          - **macOS**：解压后把 `.app` 拖进「应用程序」。未做 Apple 公证，首次打开请**右键 → 打开**，或执行
-            `xattr -dr com.apple.quarantine /Applications/TikTokScraper.app`
-          - **服务器**：解压后 `./start.sh`。
-
-          所有版本都**自带浏览器**，不依赖系统 Chrome、运行时不联网下载。
-          EOF
-          )" \
+            --notes-file /tmp/rel/final.md \
             assets/*
 
           echo "Release 已发布: ${GITHUB_REPOSITORY}/releases/tag/${TAG}"
