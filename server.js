@@ -492,7 +492,13 @@ const MODULE_CTX = {
   envfile,
   log: (m) => console.log(`  [module] ${m}`),
   /* ⚠️ 模块能 require 的库只限这里给的 —— pkg 打包后模块在快照外，自己 require 不到核心依赖 */
-  core: { scraper, report, exceljs: require('exceljs'), envfile },
+  core: {
+    scraper,
+    report,
+    exceljs: require('exceljs'),
+    envfile,
+    chromium: require('patchright').chromium, // 套壳浏览器用（卖家中心登录）
+  },
 };
 
 /** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */

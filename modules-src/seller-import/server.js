@@ -162,6 +162,79 @@ function parseWorkbook(ctx, buf) {
   });
 }
 
+/* ================= 套壳：卖家中心浏览器 + 自动接住导出文件 ================= */
+
+const DEFAULT_SELLER_URL =
+  'https://seller.tiktokshopglobalselling.com/compass/video-analytics/video-details?platform_data_source=shop&shop_region=TH';
+
+let sellerCtx = null;
+
+/** 接住页面里触发的下载 → 自动解析入库（与手动导入同一存储） */
+function attachDownload(ctx, SELLER_DIR) {
+  return (page) => {
+    page.on('download', async (d) => {
+      try {
+        const dir = ensureDir(path.join(SELLER_DIR, 'downloads'));
+        const file = path.join(dir, `compass-${Date.now()}.xlsx`);
+        await d.saveAs(file);
+        ctx.log(`接住卖家中心导出：${path.basename(file)}`);
+        const parsed = await parseWorkbook(ctx, fs.readFileSync(file));
+        if (!parsed.rows.length) {
+          ctx.log('导出文件解析到 0 行，跳过入库');
+          return;
+        }
+        const name = `${Date.now()}-${parsed.rows.length}.json`;
+        fs.writeFileSync(
+          path.join(SELLER_DIR, name),
+          JSON.stringify({
+            importedAt: new Date().toISOString(),
+            dateRange: parsed.dateRange,
+            source: 'compass-auto',
+            rows: parsed.rows,
+          })
+        );
+        ctx.log(`✅ 自动入库 ${parsed.rows.length} 条（${parsed.dateRange}），交叉分析可直接用`);
+      } catch (e) {
+        ctx.log(`处理导出文件失败：${e.message}`);
+      }
+    });
+  };
+}
+
+/** 打开卖家中心专用窗口（独立 profile，登录态可复用） */
+async function openSellerBrowser(ctx, SELLER_DIR, url) {
+  if (sellerCtx) {
+    const pg = sellerCtx.pages()[0];
+    if (pg && url) await pg.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+    return { ok: true, alreadyOpen: true };
+  }
+  const chromium = ctx.core.chromium;
+  if (!chromium) throw new Error('核心没有提供 chromium（需要 patchright）');
+  const profile = ensureDir(path.join(ctx.baseDir, 'data', 'profiles-seller'));
+  const exe = ctx.core.scraper.resolveChromePath();
+  sellerCtx = await chromium.launchPersistentContext(profile, {
+    headless: false, // 必须有头：第一次要人工登录
+    viewport: { width: 1440, height: 900 },
+    acceptDownloads: true,
+    args: ['--no-first-run', '--disable-dev-shm-usage'],
+    ...(exe ? { executablePath: exe } : {}), // 用系统 Chrome，patchright 自带的没装
+  });
+  const attach = attachDownload(ctx, SELLER_DIR);
+  sellerCtx.on('page', attach);
+  sellerCtx.pages().forEach(attach);
+  const page = sellerCtx.pages()[0] || (await sellerCtx.newPage());
+  attach(page);
+  await page.goto(url || DEFAULT_SELLER_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  sellerCtx.on('close', () => {
+    sellerCtx = null;
+  });
+  return {
+    ok: true,
+    first: true,
+    note: '请在打开的窗口里登录卖家中心（登录态会记住）。登录后回到视频分析页，把日期调好再点页面上的导出 —— 文件会被自动接住入库。',
+  };
+}
+
 module.exports = {
   register(app, ctx) {
     const { core, config, log } = ctx;
@@ -305,6 +378,31 @@ module.exports = {
         sellerOnly: sellerOnly.slice(0, 200),
         dateRangeApplied: { from: from || '', to: to || '' },
       });
+    });
+
+    const SELLER_DIR_REF = SELLER_DIR;
+
+    /* 套壳：打开卖家中心窗口（第一次要人工登录；导出文件自动接住入库） */
+    app.post('/api/seller-import/open-browser', async (req, res) => {
+      try {
+        const url = (req.body && req.body.url) || DEFAULT_SELLER_URL;
+        const r = await openSellerBrowser(ctx, SELLER_DIR_REF, url);
+        res.json(r);
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    app.post('/api/seller-import/close-browser', (req, res) => {
+      if (!sellerCtx) return res.json({ ok: true, wasOpen: false });
+      const c = sellerCtx;
+      sellerCtx = null;
+      c.close().catch(() => {});
+      res.json({ ok: true, wasOpen: true });
+    });
+
+    app.get('/api/seller-import/browser-status', (req, res) => {
+      res.json({ open: !!sellerCtx, pages: sellerCtx ? sellerCtx.pages().length : 0 });
     });
 
     log('卖家中心导入模块已挂载：/api/seller-import/*');

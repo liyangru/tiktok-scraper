@@ -8,6 +8,10 @@
     root.innerHTML = `
       <div class="si-rule">${esc(t('siRule'))}</div>
       <div class="si-row">
+        <button id="siOpenSeller" class="btn-like">${esc(t('siOpenSeller'))}</button>
+        <span class="si-hint">${esc(t('siOpenSellerHint'))}</span>
+      </div>
+      <div class="si-row">
         <label class="si-upload btn-like primary">${esc(t('siUpload'))}
           <input type="file" id="siFile" accept=".xlsx" style="display:none">
         </label>
@@ -49,6 +53,17 @@
       if (r.error) return status(r.error, 'err');
       status(t('siParsed', { n: r.count, range: r.dateRange || '-' }), 'ok');
       refresh();
+    });
+
+    $('#siOpenSeller').addEventListener('click', async () => {
+      status(t('siOpening'));
+      try {
+        const r = await fetch('/api/seller-import/open-browser', { method: 'POST' }).then((x) => x.json());
+        if (r.error) throw new Error(r.error);
+        status(t('siOpened') + (r.note ? ' · ' + r.note : ''), 'ok');
+      } catch (e) {
+        status(e.message, 'err');
+      }
     });
 
     $('#siAnalyze').addEventListener('click', async () => {
