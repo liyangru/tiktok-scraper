@@ -505,3 +505,92 @@ function renderHistory(list) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+/* ================= 设置：模块按需装配 ================= */
+
+function openSettings() {
+  $('#settingsModal').style.display = 'flex';
+  loadModules();
+}
+function closeSettings() {
+  $('#settingsModal').style.display = 'none';
+}
+
+async function loadModules() {
+  const box = $('#moduleList');
+  box.innerHTML = `<div class="m-loading">${esc(t('modulesLoading'))}</div>`;
+  $('#moduleHint').textContent = '';
+  let data;
+  try {
+    data = await fetch('/api/modules').then((x) => x.json());
+  } catch (e) {
+    box.innerHTML = `<div class="m-loading">${esc(e.message)}</div>`;
+    return;
+  }
+  if (data.indexError) $('#moduleHint').textContent = `${t('modulesIndexError')} ${data.indexError}`;
+  if (!data.modules.length) {
+    box.innerHTML = `<div class="m-loading">${esc(t('modulesNone'))}</div>`;
+    return;
+  }
+  box.innerHTML = data.modules
+    .map((m) => {
+      const state = m.installed ? (m.enabled ? 'on' : 'off') : 'none';
+      const badge =
+        state === 'on'
+          ? `<span class="m-badge on">${esc(t('modEnabled'))}</span>`
+          : state === 'off'
+            ? `<span class="m-badge">${esc(t('modInstalled'))}</span>`
+            : `<span class="m-badge dim">${esc(t('modAvailable'))}</span>`;
+      const upd = m.updateAvailable ? `<span class="m-badge upd">${esc(t('modUpdate'))} v${esc(m.version)}</span>` : '';
+      const actions = m.installed
+        ? `<button type="button" data-act="toggle" data-id="${esc(m.id)}" data-to="${m.enabled ? '0' : '1'}">${m.enabled ? esc(t('modDisable')) : esc(t('modEnable'))}</button>
+           <button type="button" data-act="del" data-id="${esc(m.id)}">${esc(t('modDelete'))}</button>`
+        : `<button type="button" data-act="install" data-id="${esc(m.id)}" class="primary">${esc(t('modInstall'))}</button>`;
+      const req = (m.requires || []).length ? `<div class="m-meta">${esc(t('modRequires'))} ${esc(m.requires.join(', '))}</div>` : '';
+      return `<div class="m-item">
+        <div class="m-main">
+          <div class="m-name">${esc(m.name)} <span class="m-ver">v${esc(m.installed ? m.installedVersion : m.version)}</span>${badge}${upd}</div>
+          <div class="m-desc">${esc(m.description || '')}</div>
+          ${req}
+        </div>
+        <div class="m-btns">${actions}</div>
+      </div>`;
+    })
+    .join('');
+}
+
+$('#settingsModal').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (btn) {
+    const { act, id } = btn.dataset;
+    btn.disabled = true;
+    try {
+      if (act === 'install') {
+        const r = await fetch(`/api/modules/${id}/install`, { method: 'POST' }).then((x) => x.json());
+        if (r.error) throw new Error(r.error);
+        toast(`${t('modInstalledToast')} · ${t('modRestartHint')}`, 'ok');
+      } else if (act === 'toggle') {
+        const r = await fetch(`/api/modules/${id}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: btn.dataset.to === '1' }),
+        }).then((x) => x.json());
+        if (r.error) throw new Error(r.error);
+        toast(`${t('modToggleToast')} · ${t('modRestartHint')}`, 'ok');
+      } else if (act === 'del') {
+        const r = await fetch(`/api/modules/${id}`, { method: 'DELETE' }).then((x) => x.json());
+        if (r.error) throw new Error(r.error);
+        toast(t('modDeletedToast'), 'ok');
+      }
+      loadModules();
+    } catch (err) {
+      toast(err.message);
+      btn.disabled = false;
+    }
+    return;
+  }
+  if (e.target.id === 'settingsModal') closeSettings();
+});
+$('#settingsBtn').addEventListener('click', openSettings);
+$('#settingsClose').addEventListener('click', closeSettings);
+$('#modRefresh').addEventListener('click', loadModules);

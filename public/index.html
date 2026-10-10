@@ -19,6 +19,7 @@
     </div>
     <div class="tools">
       <div class="browser-chip" id="browserChip"><span class="dot"></span><span>…</span></div>
+      <button type="button" class="settings-btn" id="settingsBtn" data-i18n="settings" title="设置"></button>
       <div class="lang-switch" role="group" aria-label="Language">
         <button type="button" data-lang="zh" aria-pressed="false">中文</button>
         <button type="button" data-lang="th" aria-pressed="false">ไทย</button>
@@ -175,6 +176,27 @@
 </div>
 
 <div id="toasts" role="status" aria-live="polite"></div>
+
+<!-- ================= 设置：模块按需装配 ================= -->
+<div class="modal-backdrop" id="settingsModal" style="display:none">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 data-i18n="settingsTitle">设置 · 模块</h2>
+      <button type="button" class="modal-close" id="settingsClose" aria-label="关闭">×</button>
+    </div>
+
+    <div class="modal-note" data-i18n="modulesNote"></div>
+
+    <div class="modal-body">
+      <div class="m-actions">
+        <button type="button" id="modRefresh" data-i18n="modulesRefresh"></button>
+      </div>
+      <div id="moduleList" class="module-list"></div>
+      <div id="moduleHint" class="module-hint"></div>
+    </div>
+  </div>
+</div>
+
 <script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>

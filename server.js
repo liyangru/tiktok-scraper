@@ -157,7 +157,15 @@ app.post('/api/modules/:id/install', async (req, res) => {
     const entry = index.find((m) => m.id === id);
     if (!entry) return res.status(404).json({ error: `索引里没有模块 ${id}` });
     const man = await modules.install(entry);
-    res.json({ ok: true, module: man });
+    // 下载即启用（含依赖级联）—— 用户要求「下载了就可以重启出现在应用里」
+    const en = modules.enableWithDeps(id);
+    res.json({
+      ok: true,
+      module: man,
+      enabled: en.enabled,
+      missingDeps: en.missing,
+      restartRequired: true,
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
