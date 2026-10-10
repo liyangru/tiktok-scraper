@@ -160,6 +160,7 @@ function updateExportState() {
 
 /* 加载骨架：任务进行中、结果未就绪时占位，避免“白屏” */
 function showSkeleton() {
+  $('#ecPanel').style.display = 'none';
   $('#emptyPanel').style.display = 'none';
   $('#resultsPanel').style.display = 'block';
   $('#resultMeta').textContent = '';
@@ -322,6 +323,56 @@ function sortRows(rows) {
   });
 }
 
+/* ---------------- 挂车 vs 非挂车对比 ---------------- */
+const EC_KEYS = ['n', 'tv', 'avg', 'med', 'max', 'avgLikes', 'avgComments', 'avgShares', 'avgSaves', 'avgReposts', 'avgDuration', 'inter'];
+
+function ecAgg(rows) {
+  const n = rows.length;
+  const sum = (k) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const tv = sum('views');
+  const av = (t) => (n ? Math.round(t / n) : 0);
+  const v = rows.map((r) => r.views).sort((a, b) => a - b);
+  const med = v.length
+    ? v.length % 2
+      ? v[(v.length - 1) / 2]
+      : Math.round((v[v.length / 2 - 1] + v[v.length / 2]) / 2)
+    : 0;
+  const lk = sum('likes'), cm = sum('comments'), sh = sum('shares'), sv = sum('saves'), rp = sum('reposts');
+  return {
+    n, tv, avg: av(tv), med, max: v.length ? v[v.length - 1] : 0,
+    avgLikes: av(lk), avgComments: av(cm), avgShares: av(sh), avgSaves: av(sv), avgReposts: av(rp),
+    avgDuration: av(sum('duration')),
+    inter: tv ? (lk + cm + sh + sv + rp) / tv : 0,
+  };
+}
+
+function renderEc(rows) {
+  const panel = $('#ecPanel');
+  const ec = ecAgg(rows.filter((r) => r.isEC));
+  const non = ecAgg(rows.filter((r) => !r.isEC));
+  if (!rows.length || (!ec.n && !non.n)) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = 'block';
+  $('#ecMeta').textContent = `${ec.n} / ${non.n}`;
+  const labels = t('ecMetrics') || [];
+  $('#ecRows').innerHTML = EC_KEYS.map((k, i) => {
+    const a = ec[k], b = non[k];
+    const isPct = k === 'inter';
+    const has = Number.isFinite(b) && b !== 0;
+    const diff = has ? (a - b) / b : null;
+    // 按用户偏好：不用红绿，正负靠字重/灰阶区分
+    const cls = diff === null ? '' : diff >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td>${esc(labels[i] || k)}</td>
+      <td class="num">${isPct ? (a * 100).toFixed(2) + '%' : fmt(a)}</td>
+      <td class="num">${isPct ? (b * 100).toFixed(2) + '%' : fmt(b)}</td>
+      <td class="num ${cls}">${diff === null ? '—' : (diff >= 0 ? '+' : '') + (diff * 100).toFixed(1) + '%'}</td>
+    </tr>`;
+  }).join('');
+}
+
 function renderResults() {
   if (!state.rows.length) {
     if (!state.busy) $('#resultsPanel').style.display = 'none';
@@ -357,6 +408,8 @@ function renderResults() {
     </div>`
     )
     .join('');
+
+  renderEc(state.rows);
 
   $$('thead th[data-sort]').forEach((th) => {
     const on = th.dataset.sort === state.sortKey;

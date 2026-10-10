@@ -101,6 +101,24 @@
         <h2 class="sec-title"><span data-i18n="overview">结果概览</span></h2>
         <div class="cards" id="cards"></div>
 
+        <div id="ecPanel" style="display:none">
+          <h2 class="sec-title"><span data-i18n="ecTitle"></span>
+            <span class="hint" id="ecMeta"></span></h2>
+          <div class="tbl-wrap ec-wrap">
+            <table class="ec-table">
+              <thead>
+                <tr>
+                  <th><span data-i18n="ecMetric"></span></th>
+                  <th class="num"><span data-i18n="ecYes"></span></th>
+                  <th class="num"><span data-i18n="ecNo"></span></th>
+                  <th class="num"><span data-i18n="ecDiff"></span></th>
+                </tr>
+              </thead>
+              <tbody id="ecRows"></tbody>
+            </table>
+          </div>
+        </div>
+
         <div class="res-tools">
           <div class="tabs" id="tabs"></div>
           <input class="search" id="search" placeholder="搜索文案 / 话题…">
