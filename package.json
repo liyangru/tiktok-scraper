@@ -1,6 +1,6 @@
 {
   "name": "tiktok-scraper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "TikTok 多账号视频数据抓取与报表生成",
   "author": "TikTok Scraper",
@@ -24,11 +24,14 @@
     "files": [
       "**/*",
       "!browser-payload*.tar.gz",
-      "!_macdl/**",
+      "!.*-browsers/**",
       "!.mac-browsers*/**",
+      "!.win-browsers*/**",
+      "!_macdl/**",
       "!dist/**",
       "!release/**",
       "!release-mac/**",
+      "!out/**",
       "!data/**",
       "!browsers/**",
       "!*.md",
