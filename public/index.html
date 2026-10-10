@@ -194,6 +194,13 @@
         <div class="m-actions" id="loginActions"></div>
       </div>
       <div class="set-group">
+        <div class="set-group-title" data-i18n="setStorageGroup"></div>
+        <div class="si-row">
+          <input id="storageDir" class="si-select" style="flex:1;min-width:260px" placeholder="">
+          <button type="button" id="storageSave" class="btn-like">保存</button>
+        </div>
+      </div>
+      <div class="set-group">
         <div class="set-group-title" data-i18n="setToolsGroup"></div>
         <div class="m-actions" id="toolActions"></div>
       </div>
@@ -202,6 +209,20 @@
       </div>
       <div id="moduleList" class="module-list"></div>
       <div id="moduleHint" class="module-hint"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 内置播放器（应用内播放，不走浏览器） -->
+<div class="modal-backdrop" id="playerModal" style="display:none">
+  <div class="modal modal-player" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 id="playerTitle" data-i18n="playerTitle"></h2>
+      <button type="button" class="modal-close" id="playerClose" aria-label="关闭">×</button>
+    </div>
+    <div class="player-body">
+      <video id="playerVideo" controls playsinline preload="metadata"></video>
+      <div id="playerInfo" class="si-hint"></div>
     </div>
   </div>
 </div>

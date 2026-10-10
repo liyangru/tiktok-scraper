@@ -240,6 +240,18 @@ function todayBangkok() {
 
 /** 健康检查 */
 const APP_VERSION = require('./package.json').version;
+app.get('/api/settings/storage', (req, res) => {
+  const c = settings.getCore ? settings.getCore() : {};
+  res.json({ downloadDir: (c && c.downloadDir) || '' });
+});
+
+app.post('/api/settings/storage', (req, res) => {
+  const dir = String((req.body && req.body.downloadDir) || '').trim();
+  if (dir) { try { fs.mkdirSync(dir, { recursive: true }); } catch (e) { return res.status(400).json({ error: '目录不可用：' + e.message }); } }
+  settings.setCore({ downloadDir: dir });
+  res.json({ ok: true, downloadDir: dir });
+});
+
 app.get('/api/videodb/stats', (req, res) => res.json(videodb.stats()));
 
 app.get('/api/videos/:vid', (req, res) => {

@@ -87,10 +87,37 @@ function createWindow(port) {
       if (state === 'completed') shell.showItemInFolder(savePath);
     });
   });
-  // 页面里的外链（视频链接）走系统默认浏览器，不在应用内开新窗口
+  /**
+   * ⚠️ 用户硬要求：**不允许任何功能走系统浏览器**。
+   * 所有 http(s) 外链（视频页、卖家中心等）一律在**应用内**开新窗口，
+   * 而不是 shell.openExternal 交给系统默认浏览器。
+   */
+  const openInApp = (url) => {
+    const child = new BrowserWindow({
+      width: 1100,
+      height: 800,
+      autoHideMenuBar: true,
+      backgroundColor: '#ffffff',
+      title: 'TikTok',
+      parent: win,
+      webPreferences: { contextIsolation: true, nodeIntegration: false, spellcheck: false },
+    });
+    child.loadURL(url).catch(() => {});
+    return child;
+  };
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:/i.test(url)) shell.openExternal(url);
+    if (/^https?:/i.test(url)) openInApp(url);
     return { action: 'deny' };
+  });
+  // 站内跳转如果跑到外部域名，也拉回应用内窗口，不让主窗口离开应用
+  win.webContents.on('will-navigate', (e, url) => {
+    try {
+      const u = new URL(url);
+      if (u.hostname !== '127.0.0.1' && u.hostname !== 'localhost') {
+        e.preventDefault();
+        openInApp(url);
+      }
+    } catch (_) {}
   });
   win.on('closed', () => {
     win = null;

@@ -368,6 +368,20 @@ module.exports = {
       })();
     });
 
+    /** 取播放地址（给内置播放器用）：优先公开解析服务，不启动浏览器 */
+    app.post('/api/video-download/play-url', async (req, res) => {
+      const url = String((req.body && req.body.url) || '');
+      const vid = String((req.body && req.body.vid) || '');
+      if (!url && !vid) return res.status(400).json({ error: '缺少 url 或 vid' });
+      const target = url || `https://www.tiktok.com/@_/video/${vid}`;
+      try {
+        const it = await resolveViaTikwm(core, target);
+        return res.json({ ok: true, playUrl: it.playUrl, cover: it.cover, duration: it.duration, desc: it.desc });
+      } catch (e) {
+        return res.status(500).json({ error: '取播放地址失败：' + e.message });
+      }
+    });
+
     app.get('/api/video-download/jobs/:id', (req, res) => {
       const j = jobs.get(req.params.id);
       if (!j) return res.status(404).json({ error: '任务不存在' });

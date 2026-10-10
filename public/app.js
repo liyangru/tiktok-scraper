@@ -534,6 +534,7 @@ function bindRowClick() {
         .map(([k, v]) => `<div><span class="dk">${esc(k)}</span><span class="dv">${esc(v)}</span></div>`).join('')}
       </div>
       <div class="d-actions">
+        <button type="button" class="d-play" data-vid="${esc(r.vid)}">${esc(t('playerPlay'))}</button>
         <button type="button" class="d-ai" data-vid="${esc(r.vid)}">${esc(t('aiOneVideo'))}</button>
         <button type="button" class="d-remake" data-vid="${esc(r.vid)}">${esc(t('aiRemakeBtn'))}</button>
       </div>
@@ -920,3 +921,75 @@ async function initQuickAcc() {
 }
 initQuickAcc();
 
+
+
+/* ================= 内置播放器（应用内播放，绝不走系统浏览器） ================= */
+function closePlayer() {
+  const m = $('#playerModal');
+  if (m) m.style.display = 'none';
+  const v = $('#playerVideo');
+  if (v) { v.pause(); v.removeAttribute('src'); v.load(); }
+}
+
+async function playVideo(vid) {
+  const r = currentRows().find((x) => String(x.vid) === String(vid));
+  const m = $('#playerModal');
+  if (!r || !m) return;
+  $('#playerTitle').textContent = (r.desc || r.vid).slice(0, 50);
+  $('#playerInfo').textContent = t('playerLoading');
+  m.style.display = 'flex';
+  try {
+    const res = await fetch('/api/video-download/play-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: r.url, vid: r.vid }),
+    }).then((x) => x.json());
+    if (res.error) throw new Error(res.error);
+    const v = $('#playerVideo');
+    v.src = res.playUrl;
+    v.poster = res.cover || '';
+    $('#playerInfo').textContent = `@${r.account} · ${res.duration || r.duration}s · ${t('playerNoWatermark')}`;
+    v.play().catch(() => {});
+  } catch (e) {
+    $('#playerInfo').innerHTML = `<span class="tl-msg err">${esc(e.message)}</span>`;
+  }
+}
+
+function initPlayer() {
+  const m = $('#playerModal');
+  if (!m) return;
+  $('#playerClose').addEventListener('click', closePlayer);
+  m.addEventListener('click', (e) => { if (e.target === m) closePlayer(); });
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('.d-play');
+    if (b) playVideo(b.dataset.vid);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePlayer(); });
+}
+
+/* ================= 存储位置 ================= */
+async function initStorage() {
+  const input = $('#storageDir');
+  if (!input) return;
+  try {
+    const d = await fetch('/api/settings/storage').then((x) => x.json());
+    input.value = d.downloadDir || '';
+    if (!input.value) input.placeholder = t('storageDefault');
+  } catch (_) {}
+  $('#storageSave').addEventListener('click', async () => {
+    try {
+      const r = await fetch('/api/settings/storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ downloadDir: input.value.trim() }),
+      }).then((x) => x.json());
+      if (r.error) throw new Error(r.error);
+      toast(t('storageSaved'), 'ok');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  });
+}
+
+initPlayer();
+initStorage();
