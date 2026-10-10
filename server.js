@@ -239,6 +239,7 @@ function todayBangkok() {
 }
 
 /** 健康检查 */
+const APP_VERSION = require('./package.json').version;
 app.get('/api/videodb/stats', (req, res) => res.json(videodb.stats()));
 
 app.get('/api/videos/:vid', (req, res) => {
@@ -256,6 +257,7 @@ app.get('/api/health', (req, res) => {
     chromeFound: !!chrome,
     concurrency: CONCURRENCY,
     headless: process.env.BROWSER_HEADLESS === '1',
+    version: APP_VERSION,
   });
 });
 

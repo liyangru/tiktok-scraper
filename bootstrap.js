@@ -127,33 +127,74 @@ async function preloadBundledModules() {  if (!isPkg) return;
   }
 }
 
-// 启动流程：先起「加载页」占住端口 → 预装/解压每一步更新进度 → 主服务就绪后
-// splash 关闭、主服务在同一端口接管，浏览器页面自动跳进主界面；失败则页面显示原因。
+/** 打开应用窗口（自带 Chromium --app 模式；失败静默） */
+function openAppWindow(url) {
+  try {
+    const { spawn } = require('child_process');
+    const exe = process.env.CHROME_PATH || path.join(BASE_DIR, 'browsers', 'chromium-1248', 'chrome-win64', 'chrome.exe');
+    if (!fs.existsSync(exe)) return false;
+    const profile = path.join(BASE_DIR, 'ui-profile');
+    fs.mkdirSync(profile, { recursive: true });
+    for (const f of ['SingletonLock', 'SingletonCookie', 'SingletonSocket']) {
+      try { fs.rmSync(path.join(profile, f), { force: true }); } catch (_) {}
+    }
+    const child = spawn(exe, [
+      `--app=${url}`,
+      `--user-data-dir=${profile}`,
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-features=ChromeForTestingBanner',
+      '--window-size=1440,960',
+    ], { detached: true, stdio: 'ignore' });
+    child.unref();
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 启动流程：
+//   0) 单实例守卫：目标端口上如果已有本应用在跑 → 直接开它的窗口并退出本进程
+//   1) 加载页用「临时端口」（绝不和主服务抢端口），浏览器窗口立即打开加载页
+//   2) 每个阶段更新进度；主服务就绪后把真实端口告诉加载页，页面自动跳转
+//   3) 失败：加载页常驻显示原因与日志路径，进程不退出
 (async () => {
   let PORT = parseInt(process.env.PORT || "8899", 10);
   let splash = null;
+
+  // ---- 单实例守卫 ----
+  try {
+    const probe = await fetch(`http://127.0.0.1:${PORT}/api/health`, { signal: AbortSignal.timeout(1500) });
+    if (probe.ok) {
+      const j = await probe.json().catch(() => ({}));
+      const ver = require('./package.json').version;
+      if (j.version === ver) {
+        log('已有实例在运行（同版本），直接打开它的窗口');
+        openAppWindow(`http://127.0.0.1:${PORT}/`);
+        process.exit(0);
+      }
+      // 端口上是个旧版本：提示用户先关掉，同时把旧窗口打开方便其关闭
+      const msg = `检测到旧版本仍在运行（端口 ${PORT}）。\n请先关闭旧的 TikTok 数据抓取窗口，再重新启动本程序。`;
+      log('⚠ ' + msg);
+      openAppWindow(`http://127.0.0.1:${PORT}/`);
+      // 用加载页把这句话显示出来（它不占目标端口，随时可用）
+      const { createSplash } = require('./lib/splash');
+      const s2 = await createSplash();
+      s2.fail(msg.replace(/\\n/g, ' '), LOG_FILE);
+      openAppWindow(`http://127.0.0.1:${s2.port}/`);
+      setTimeout(() => process.exit(0), 600000); // 给足时间看提示
+      return;
+    }
+  } catch (_) {} // 探测失败 = 端口没人听，正常往下走
+
   try {
     const { createSplash } = require('./lib/splash');
-    splash = await createSplash(PORT);
-    PORT = splash.port; // 目标端口被占时 splash 会顺延，后续全部用它
-    // 尽早打开窗口显示加载页（spawn 自带 Chromium 的 --app 模式，静默失败无妨）
-    try {
-      const { spawn } = require('child_process');
-      const exe = process.env.CHROME_PATH || path.join(BASE_DIR, 'browsers', 'chromium-1248', 'chrome-win64', 'chrome.exe');
-      if (fs.existsSync(exe)) {
-        const profile = path.join(BASE_DIR, 'ui-profile');
-        fs.mkdirSync(profile, { recursive: true });
-        const child = spawn(exe, [
-          `--app=http://127.0.0.1:${PORT}/`,
-          `--user-data-dir=${profile}`,
-          '--no-first-run',
-          '--no-default-browser-check',
-          '--disable-features=ChromeForTestingBanner',
-          '--window-size=1440,960',
-        ], { detached: true, stdio: 'ignore' });
-        child.unref();
-      }
-    } catch (_) {}
+    splash = await createSplash(); // 临时端口，不占目标端口
+    PORT = splash.port;
+    log('加载页:', `http://127.0.0.1:${PORT}/`);
+    if (process.env.NO_AUTO_OPEN !== '1') openAppWindow(`http://127.0.0.1:${PORT}/`);
 
     splash.set('解压内置浏览器…');
     if (isPkg) {
@@ -168,16 +209,18 @@ async function preloadBundledModules() {  if (!isPkg) return;
     await preloadBundledModules();
 
     splash.set('启动主服务…');
-    process.env.NO_AUTO_OPEN = '1'; // 窗口已在加载页阶段打开，主服务别再开第二个
+    process.env.NO_AUTO_OPEN = '1'; // 窗口已打开，主服务别再开第二个
     const { start } = await Promise.resolve(require('./server.js'));
-    const realPort = await start(PORT); // splash 已占住此端口，主服务直接接管
-    await splash.close(); // 主服务已在同一端口接管
+    const realPort = await start(PORT); // 主服务端口若被占会自动顺延
+    splash.ready(realPort); // 告诉加载页真实地址，页面自己跳转
+    await sleep(2500); // 给页面时间拿到 target 并跳走
+    await splash.close();
     log('就绪: http://127.0.0.1:' + realPort);
   } catch (e) {
     const msg = e && e.stack ? e.stack : String(e && e.message);
     console.error('启动失败:', msg);
     if (splash) {
-      splash.fail(msg, LOG_FILE); // 加载页会显示原因与日志路径，进程保持存活让用户看到
+      splash.fail(msg, LOG_FILE); // 加载页显示原因与日志路径，进程保持存活
     } else {
       process.exit(1);
     }
