@@ -10,7 +10,7 @@
     "start": "node server.js",
     "dev": "node server.js",
     "app": "electron .",
-    "build:app": "electron-builder --win portable",
+    "build:app": "electron-builder --win portable --publish never",
     "build:app:mac": "bash scripts/build-mac.sh",
     "build:exe": "node scripts/patch-pkg.js && pkg . --targets node22-win-x64 --no-bytecode --public --public-packages \"*\" --output dist/tiktok-scraper.exe && node scripts/patch-exe-subsystem.js dist/tiktok-scraper.exe"
   },

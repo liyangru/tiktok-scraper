@@ -72,7 +72,7 @@ jobs:
           fi
 
       - name: electron-builder 打包
-        run: npx electron-builder --mac zip --${{ matrix.arch }} -c.directories.output=release-mac
+        run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never -c.directories.output=release-mac
 
       - name: ad-hoc 签名（Apple Silicon 必需）
         run: |

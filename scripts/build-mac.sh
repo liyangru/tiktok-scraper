@@ -68,7 +68,7 @@ for arch in $ARCHS; do
   fi
   echo "   → 构建 $arch ..."
   cp -f "$payload" browser-payload.tar.gz
-  npx electron-builder --mac zip --"$arch" -c.directories.output=release-mac
+  npx electron-builder --mac zip --"$arch" --publish never -c.directories.output=release-mac
   BUILT=$((BUILT + 1))
 done
 
