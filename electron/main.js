@@ -18,6 +18,16 @@ if (!app.requestSingleInstanceLock()) {
 
 // ---- 运行环境 ----
 app.disableHardwareAcceleration(); // 关硬件加速：数据面板用不到，且在虚拟机/远程桌面/受限环境更稳
+// ⚠️ 实测：只调 disableHardwareAcceleration 不够 —— 受限环境下 GPU 进程仍会崩
+//    （FATAL: GPU process isn't usable. Goodbye.）导致整个应用退出。这几条必须都加。
+app.commandLine.appendSwitch('disable-gpu');
+app.commandLine.appendSwitch('disable-gpu-compositing');
+app.commandLine.appendSwitch('disable-gpu-sandbox');
+app.commandLine.appendSwitch('disable-software-rasterizer');
+app.commandLine.appendSwitch('disable-dev-shm-usage');
+// 受限环境下网络服务也会崩（Network service crashed）→ 关沙箱
+app.commandLine.appendSwitch('no-sandbox');
+app.commandLine.appendSwitch('disable-setuid-sandbox');
 app.commandLine.appendSwitch('no-proxy-server'); // 界面只连本机 127.0.0.1，避免系统代理把 loopback 也代理走
 app.commandLine.appendSwitch('disable-http-cache');
 process.env.NO_AUTO_OPEN = '1'; // 不再开外部浏览器 / Chromium 窗口
@@ -40,13 +50,13 @@ let win = null;
 
 function createWindow(port) {
   win = new BrowserWindow({
-    width: 1440,
-    height: 960,
+    width: 1200,
+    height: 820,
     minWidth: 1040,
     minHeight: 700,
     show: false,
     backgroundColor: '#fbfbfb',
-    title: 'TikTok 多账号数据抓取',
+    title: 'TikTok 数据分析',
     autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
