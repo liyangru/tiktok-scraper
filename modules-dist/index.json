@@ -1,7 +1,18 @@
 {
-  "generatedAt": "2026-10-10T08:45:34.219Z",
+  "generatedAt": "2026-10-10T09:18:03.811Z",
   "tag": "modules-v1",
   "modules": [
+    {
+      "id": "brand-analytics",
+      "name": "品牌媒体分析",
+      "version": "1.0.0",
+      "description": "把多个账号归到同一品牌下看整体：品牌总粉丝/总播放/总互动、账号贡献对比（谁贡献最多）、月度趋势、品牌 TOP 视频榜，以及互动率、平均时长等媒体运营指标。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 5080,
+      "sha256": "7947b860ba1106d33d95a7cead2cab0687326e9884a1dcd5222a35b27d4f2819",
+      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/brand-analytics-1.0.0.tar.gz"
+    },
     {
       "id": "seller-import",
       "name": "卖家中心导入与挂车分析",
@@ -9,8 +20,8 @@
       "description": "导入卖家中心导出的「视频表现」xlsx，按视频ID与应用抓到的 TikTok 视频交叉匹配：匹配上=挂车（补 GMV/订单等商家指标），TikTok 有而卖家中心没有=没挂车，卖家中心有而 TikTok 没有=广告计划/混剪（自动剔除，不污染数据）。",
       "author": "liyangru",
       "requires": [],
-      "size": 8859,
-      "sha256": "33350663a496aa9bffa915969cf0e239701b2686ac3d6c5d3d763ff1a4011cd8",
+      "size": 9808,
+      "sha256": "8c956059a086fd23c7f8c3cb18705bd8a8c9d6e241904eb8f4f0bd23f675379d",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/seller-import-1.0.0.tar.gz"
     },
     {

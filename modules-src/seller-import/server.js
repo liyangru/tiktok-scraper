@@ -201,8 +201,39 @@ function attachDownload(ctx, SELLER_DIR) {
   };
 }
 
-/** 打开卖家中心专用窗口（独立 profile，登录态可复用） */
-async function openSellerBrowser(ctx, SELLER_DIR, url) {
+/** 请求记录：把页面发出的 XHR 记下来，用于分析卖家中心的数据接口 */
+let XHR_LOG = [];
+const XHR_MAX = 400;
+
+function attachXhrLog(page, ctx) {
+  page.on('response', (r) => {
+    try {
+      const u = r.url();
+      if (!/api|ajax|graphql|compass|analytics/i.test(u)) return;
+      if (/\.(js|css|png|jpe?g|webp|svg|woff2?|mp4|ico)(\?|$)/i.test(u)) return;
+      XHR_LOG.push({
+        t: new Date().toISOString().slice(11, 19),
+        status: r.status(),
+        method: r.request().method(),
+        url: u.slice(0, 300),
+      });
+      if (XHR_LOG.length > XHR_MAX) XHR_LOG = XHR_LOG.slice(-XHR_MAX);
+    } catch (_) {}
+  });
+}
+
+/** 登录态判断：profile 目录里有内容就当作已登录过（够用，不做复杂探测） */
+function hasSavedLogin(ctx) {
+  const p = path.join(ctx.baseDir, 'data', 'profiles-seller');
+  try {
+    return fs.existsSync(p) && fs.readdirSync(p).some((f) => /Cookies|Network|Local Storage/i.test(f));
+  } catch (_) {
+    return false;
+  }
+}
+
+/** 打开卖家中心：headless=true 无头（登录之后都用这个）；false 有头（第一次人工登录） */
+async function openSellerBrowser(ctx, SELLER_DIR, url, headless) {
   if (sellerCtx) {
     const pg = sellerCtx.pages()[0];
     if (pg && url) await pg.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
@@ -212,26 +243,61 @@ async function openSellerBrowser(ctx, SELLER_DIR, url) {
   if (!chromium) throw new Error('核心没有提供 chromium（需要 patchright）');
   const profile = ensureDir(path.join(ctx.baseDir, 'data', 'profiles-seller'));
   const exe = ctx.core.scraper.resolveChromePath();
+  const hl = headless === undefined ? hasSavedLogin(ctx) : !!headless; // 已登录过 → 默认无头
   sellerCtx = await chromium.launchPersistentContext(profile, {
-    headless: false, // 必须有头：第一次要人工登录
+    headless: hl,
     viewport: { width: 1440, height: 900 },
     acceptDownloads: true,
-    args: ['--no-first-run', '--disable-dev-shm-usage'],
-    ...(exe ? { executablePath: exe } : {}), // 用系统 Chrome，patchright 自带的没装
+    args: ['--no-first-run', '--disable-dev-shm-usage'].concat(hl ? ['--window-position=-32000,-32000'] : []),
+    ...(exe ? { executablePath: exe } : {}),
   });
-  const attach = attachDownload(ctx, SELLER_DIR);
-  sellerCtx.on('page', attach);
-  sellerCtx.pages().forEach(attach);
+  const attachDl = attachDownload(ctx, SELLER_DIR);
+  sellerCtx.on('page', (p2) => {
+    attachDl(p2);
+    attachXhrLog(p2, ctx);
+  });
+  sellerCtx.pages().forEach((p2) => {
+    attachDl(p2);
+    attachXhrLog(p2, ctx);
+  });
   const page = sellerCtx.pages()[0] || (await sellerCtx.newPage());
-  attach(page);
+  attachDownload(ctx, SELLER_DIR)(page);
+  attachXhrLog(page, ctx);
   await page.goto(url || DEFAULT_SELLER_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
   sellerCtx.on('close', () => {
     sellerCtx = null;
   });
+
+  // 有头登录模式：检测到登录成功（URL 离开 /account/login）就**自动关窗**，
+  // 之后所有操作全走无头 —— 用户只在输密码那几十秒看到窗口。
+  if (!hl) {
+    (async () => {
+      for (let i = 0; i < 300; i++) {
+        await new Promise((s2) => setTimeout(s2, 2000));
+        if (!sellerCtx) return; // 用户自己关了
+        try {
+          const u = sellerCtx.pages()[0] ? sellerCtx.pages()[0].url() : '';
+          if (u && !/account\/login/i.test(u)) {
+            ctx.log('✅ 检测到登录成功，自动关闭登录窗口（之后全程无头，不再弹窗）');
+            const c = sellerCtx;
+            sellerCtx = null;
+            await c.close().catch(() => {});
+            return;
+          }
+        } catch (_) {
+          return;
+        }
+      }
+    })();
+  }
+
   return {
     ok: true,
-    first: true,
-    note: '请在打开的窗口里登录卖家中心（登录态会记住）。登录后回到视频分析页，把日期调好再点页面上的导出 —— 文件会被自动接住入库。',
+    headless: hl,
+    first: !hl,
+    note: hl
+      ? '无头模式运行（登录态已保存）。导出文件会被自动接住入库。'
+      : '请在打开的窗口里登录卖家中心（登录态会记住）。登录后回到视频分析页，把日期调好再点页面上的导出 —— 文件会被自动接住入库。',
   };
 }
 
@@ -386,11 +452,16 @@ module.exports = {
     app.post('/api/seller-import/open-browser', async (req, res) => {
       try {
         const url = (req.body && req.body.url) || DEFAULT_SELLER_URL;
-        const r = await openSellerBrowser(ctx, SELLER_DIR_REF, url);
+        const r = await openSellerBrowser(ctx, SELLER_DIR_REF, url, req.body ? req.body.headless : undefined);
         res.json(r);
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
+    });
+
+    /* 诊断：列出页面发出的 API 请求（用于分析卖家中心的数据接口，做全自动导出用） */
+    app.get('/api/seller-import/xhr-log', (req, res) => {
+      res.json({ open: !!sellerCtx, count: XHR_LOG.length, log: XHR_LOG });
     });
 
     app.post('/api/seller-import/close-browser', (req, res) => {
