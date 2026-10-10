@@ -77,6 +77,8 @@
     "assets": [
       "public/**/*",
       "browser-payload.tar.gz",
+      "modules-dist/*.tar.gz",
+      "modules-dist/index.json",
       "node_modules/playwright-core/**/*.json",
       "node_modules/patchright-core/**/*.json",
       "node_modules/patchright/**/*.json",

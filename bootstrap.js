@@ -90,11 +90,53 @@ if (isPkg && process.env.BROWSER_HEADLESS === undefined) {
 log('数据目录:', BASE_DIR);
 log('内置浏览器:', process.env.CHROME_PATH || process.env.PLAYWRIGHT_BROWSERS_PATH || '(未设置)');
 
+// exe 启动时：将内嵌模块包预装到用户本地数据目录。先预装再 require server，
+// 否则 loadEnabled 看不到模块；源码运行（node server.js）不走此流程。
+async function preloadBundledModules() {
+  if (!isPkg) return;
+  const snapDir = path.join(__dirname, 'modules-dist'); // pkg assets 虚拟快照
+  if (!fs.existsSync(snapDir)) {
+    log('未找到内置模块包:', snapDir);
+    return;
+  }
+  const modDir = path.join(BASE_DIR, 'modules');
+  fs.mkdirSync(modDir, { recursive: true });
+  const tar = require('tar');
+  let entries = [];
+  try {
+    const idx = JSON.parse(fs.readFileSync(path.join(snapDir, 'index.json'), 'utf8'));
+    entries = idx.modules || [];
+  } catch (e) {
+    log('内置模块索引读取失败:', e.message);
+    return;
+  }
+  for (const entry of entries) {
+    const id = entry.id;
+    const archive = path.join(snapDir, `${id}-${entry.version}.tar.gz`);
+    const manifest = path.join(modDir, id, 'module.json');
+    if (!id || !fs.existsSync(archive) || fs.existsSync(manifest)) continue; // 不覆盖用户状态
+    try {
+      await tar.x({ file: archive, cwd: modDir });
+      log('预装模块:', id);
+    } catch (e) {
+      log('预装模块失败:', id, e.message);
+    }
+  }
+  const idx = path.join(snapDir, 'index.json');
+  if (fs.existsSync(idx)) {
+    try { fs.copyFileSync(idx, path.join(BASE_DIR, 'modules-dist-index.json')); } catch (_) {}
+  }
+}
+
 // 启动服务（server.js 会读取 TT_BASE_DIR / PLAYWRIGHT_BROWSERS_PATH）。
-// 注意：pkg 下入口是 bootstrap.js，server.js 里 require.main !== module，
-// 所以必须在这里显式调用 start()，不能靠 server.js 自启。
-const { start } = require('./server.js');
-start().catch((e) => {
-  console.error('启动失败:', e.message);
-  process.exit(1);
-});
+// 必须等模块预装完成再 require server.js，让启动时 loadEnabled 能发现这些模块。
+(async () => {
+  try {
+    await preloadBundledModules();
+    const { start } = require('./server.js');
+    await start();
+  } catch (e) {
+    console.error('启动失败:', e && e.stack ? e.stack : e.message);
+    process.exit(1);
+  }
+})();
