@@ -1,45 +1,49 @@
 /**
- * 模块：TikTok 账号登录（套壳创作者中心的前置）
+ * 模块：TikTok 账号登录（常驻会话版）
  *
- * 两种登录，全程无头（不弹窗）：
- *   1. 扫码（优先）：无头拿到登录页二维码 → 截图回传应用界面 → 用户手机扫码 → 轮询成功
- *   2. 账密/邮箱：装填提交（出验证码同卖家中心处理）
+ * 设计要点（对比第一版的问题）：
+ *   ① **常驻会话**：浏览器只启动一次并保持，状态查询是即时的 —— 不再每次冷启动（原来要 10~40 秒）
+ *   ② **非阻塞启动**：/start 立即返回，真正的加载在后台跑，前端轮询 /state 看进度
+ *   ③ **细粒度状态**：启动中 → 加载页 → 等待扫码 → 已扫码待确认 → 需要验证码/密码 → 成功/失败
+ *   ④ **扫码后可继续输入**：TikTok 扫码后常要求邮箱/短信验证码或密码，/submit 把输入填进去继续
  *
- * 登录态存独立 profile（data/profiles-tiktok），之后抓创作者中心数据（平均观看时长/完播率/
- * 流量来源/受众画像）、完整评论区、关注粉丝列表都靠它。
+ * 全程无头（不弹窗）；登录态存 data/profiles-tiktok/<账号名>，支持多账号。
  */
+const fs = require('fs');
 const path = require('path');
 
-const LOGIN_QR = 'https://www.tiktok.com/login/qrcode';
-const LOGIN_PWD = 'https://www.tiktok.com/login/phone-or-email/email';
+const QR_URL = 'https://www.tiktok.com/login/qrcode';
+const PWD_URL = 'https://www.tiktok.com/login/phone-or-email/email';
 
-let tctx = null;
-
-async function launch(ctx, headless = true) {
-  if (tctx) return tctx;
-  const chromium = ctx.core.chromium;
-  if (!chromium) throw new Error('核心没有提供 chromium');
-  const profile = path.join(ctx.baseDir, 'data', 'profiles-tiktok');
-  require('fs').mkdirSync(profile, { recursive: true });
-  const exe = ctx.core.scraper.resolveChromePath();
-  tctx = await chromium.launchPersistentContext(profile, {
-    headless: !!headless,
-    viewport: { width: 1280, height: 860 },
-    args: ['--no-first-run', '--disable-dev-shm-usage'].concat(headless ? [] : ['--window-position=-32000,-32000']),
-    ...(exe ? { executablePath: exe } : {}),
-  });
-  tctx.on('close', () => {
-    tctx = null;
-  });
-  return tctx;
-}
-
-const loggedIn = (page) => {
-  const u = page.url();
-  return u && !/\/login/i.test(u);
+/** 单会话状态机 */
+const S = {
+  phase: 'idle', // idle | launching | loading | waiting-scan | scanned | need-input | logged-in | error
+  message: '',
+  qr: '',
+  inputKind: '', // '' | 'code' | 'password' | 'account'
+  account: '',
+  at: 0,
 };
 
-/** 在页面与所有 frame 里找二维码图形 */
+let ctxRef = null;
+let pageRef = null;
+let profileName = 'default';
+let ticker = null;
+
+const set = (phase, message, extra) => {
+  S.phase = phase;
+  S.message = message || '';
+  Object.assign(S, extra || {});
+  S.at = Date.now();
+};
+
+function profileDir(ctx, name) {
+  const d = path.join(ctx.baseDir, 'data', 'profiles-tiktok', name || 'default');
+  fs.mkdirSync(d, { recursive: true });
+  return d;
+}
+
+/** 在页面与所有 frame 里找二维码 */
 async function findQr(page) {
   const frames = [page.mainFrame()].concat(page.frames());
   for (const f of frames) {
@@ -56,98 +60,205 @@ async function findQr(page) {
   return null;
 }
 
+/** 读页面上的可见文案（判断走到哪一步） */
+async function pageText(page) {
+  try {
+    return await page.evaluate(() => {
+      const out = [];
+      document.querySelectorAll('div,span,p,h1,h2,h3,button,label').forEach((e) => {
+        if (e.children.length) return;
+        const t = (e.textContent || '').trim();
+        if (t && t.length <= 60) out.push(t);
+      });
+      return out.join(' | ');
+    });
+  } catch (_) {
+    return '';
+  }
+}
+
+const isLoggedInUrl = (u) => !!u && !/\/login/i.test(u) && !/^about:blank/.test(u);
+
+/** 后台心跳：每 1.5 秒刷新阶段（「不卡顿」的关键 —— 状态永远最新） */
+function startTicker(ctx) {
+  if (ticker) clearInterval(ticker);
+  ticker = setInterval(async () => {
+    if (!pageRef || !ctxRef) return;
+    try {
+      const url = pageRef.url();
+      if (isLoggedInUrl(url)) {
+        set('logged-in', '登录成功');
+        return;
+      }
+      const txt = await pageText(pageRef);
+      if (/验证码|verification code|รหัสยืนยัน/i.test(txt) && !/扫码|scan/i.test(txt)) {
+        const hasPwd = await pageRef.$('input[type=password]').catch(() => null);
+        set('need-input', hasPwd ? '需要在页面上补充密码' : '需要输入验证码（查看手机短信或邮箱）', {
+          inputKind: hasPwd ? 'password' : 'code',
+        });
+        return;
+      }
+      if (/扫描成功|已扫描|请在手机|confirm on your phone|ยืนยันบนมือถือ|scan success/i.test(txt)) {
+        set('scanned', '已扫码 —— 请在手机上点确认');
+        return;
+      }
+      if (S.phase !== 'waiting-scan' && S.phase !== 'scanned' && S.phase !== 'need-input') {
+        const qr = await findQr(pageRef);
+        if (qr) {
+          try {
+            const shot = await qr.screenshot();
+            set('waiting-scan', '请用手机 TikTok 扫码', { qr: shot.toString('base64'), inputKind: '' });
+          } catch (_) {
+            set('waiting-scan', '请用手机 TikTok 扫码');
+          }
+        }
+      }
+    } catch (_) {}
+  }, 1500);
+}
+
+async function ensureSession(ctx, name) {
+  profileName = name || profileName || 'default';
+  if (ctxRef) return ctxRef;
+  const chromium = ctx.core.chromium;
+  if (!chromium) throw new Error('核心没有提供 chromium');
+  const exe = ctx.core.scraper.resolveChromePath();
+  ctxRef = await chromium.launchPersistentContext(profileDir(ctx, profileName), {
+    headless: true,
+    viewport: { width: 1280, height: 900 },
+    args: ['--no-first-run', '--disable-dev-shm-usage'],
+    ...(exe ? { executablePath: exe } : {}),
+  });
+  ctxRef.on('close', () => {
+    ctxRef = null;
+    pageRef = null;
+    if (ticker) clearInterval(ticker);
+    ticker = null;
+    if (S.phase !== 'logged-in') set('idle', '');
+  });
+  return ctxRef;
+}
+
+async function closeSession() {
+  if (ticker) clearInterval(ticker);
+  ticker = null;
+  const c = ctxRef;
+  ctxRef = null;
+  pageRef = null;
+  if (c) await c.close().catch(() => {});
+}
+
 module.exports = {
   register(app, ctx) {
     const { log } = ctx;
-    let qrPoll = null;
 
-    /** 扫码：拿二维码图 + 后台轮询登录成功 */
-    app.post('/api/tiktok-login/qr', async (req, res) => {
+    /** 开始登录：**立即返回**，后台加载；前端轮询 /state 看进度 */
+    app.post('/api/tiktok-login/start', async (req, res) => {
+      const account = String((req.body && req.body.account) || '').trim();
+      const mode = (req.body && req.body.mode) === 'password' ? 'password' : 'qr';
+      res.json({ ok: true, started: true });
+      (async () => {
+        try {
+          set('launching', '正在启动浏览器…', { qr: '', inputKind: '', account });
+          await closeSession();
+          const c = await ensureSession(ctx, account);
+          set('loading', '正在打开登录页…');
+          const page = c.pages()[0] || (await c.newPage());
+          pageRef = page;
+          startTicker(ctx);
+          await page.goto(mode === 'qr' ? QR_URL : PWD_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          await page.waitForTimeout(2500);
+          if (mode === 'qr') {
+            const qr = await findQr(page);
+            if (qr) {
+              const shot = await qr.screenshot();
+              set('waiting-scan', '请用手机 TikTok 扫码', { qr: shot.toString('base64'), inputKind: '' });
+            } else {
+              set('loading', '正在加载二维码…');
+            }
+          } else {
+            set('need-input', '请输入账号与密码后提交', { inputKind: 'account' });
+          }
+        } catch (e) {
+          set('error', '打开登录页失败：' + e.message);
+        }
+      })();
+    });
+
+    /** 状态查询（即时，不启动任何东西） */
+    app.get('/api/tiktok-login/state', (req, res) => {
+      res.json({
+        phase: S.phase,
+        message: S.message,
+        qr: S.qr,
+        inputKind: S.inputKind,
+        account: S.account,
+        loggedIn: S.phase === 'logged-in',
+        since: S.at,
+        open: !!ctxRef,
+      });
+    });
+
+    /** 扫码后补充输入（验证码 / 密码 / 账号密码） */
+    app.post('/api/tiktok-login/submit', async (req, res) => {
+      const b = req.body || {};
       try {
-        const c = await launch(ctx, true); // 全程无头
-        const page = c.pages()[0] || (await c.newPage());
-        await page.goto(LOGIN_QR, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForTimeout(4500);
-        const qr = await findQr(page);
-        if (!qr) return res.status(500).json({ error: '没找到二维码（页面结构可能变了）' });
-        const shot = await qr.screenshot();
-        // 后台轮询：扫码成功后 URL 离开 /login，或有 sessionid cookie
-        if (qrPoll) clearInterval(qrPoll);
-        qrPoll = setInterval(() => {
-          (async () => {
+        if (!pageRef) return res.status(400).json({ error: '会话已关闭，请重新开始' });
+        const page = pageRef;
+        const frames = [page.mainFrame()].concat(page.frames());
+        const fill = async (sel, val) => {
+          for (const f of frames) {
             try {
-              const pg = c.pages()[0];
-              if (!pg) return;
-              if (loggedIn(pg)) {
-                clearInterval(qrPoll);
-                qrPoll = null;
-                log('✅ TikTok 扫码登录成功（会话已存 data/profiles-tiktok）');
+              const el = await f.$(sel);
+              if (el) {
+                await el.fill(String(val));
+                return true;
               }
             } catch (_) {}
-          })();
-        }, 2500);
-        res.json({ ok: true, qr: shot.toString('base64'), note: '用手机 TikTok App 扫这个码' });
-      } catch (e) {
-        res.status(500).json({ error: e.message });
-      }
-    });
-
-    /** 账密/邮箱 */
-    app.post('/api/tiktok-login/password', async (req, res) => {
-      const account = String((req.body && req.body.account) || '').trim();
-      const password = String((req.body && req.body.password) || '');
-      if (!account || !password) return res.status(400).json({ error: '账号密码都要有' });
-      try {
-        const c = await launch(ctx, true);
-        const page = c.pages()[0] || (await c.newPage());
-        await page.goto(LOGIN_PWD, { waitUntil: 'domcontentloaded', timeout: 60000 });
-        await page.waitForTimeout(4000);
-        // 登录表单可能在 iframe 里：所有 frame 都试
-        const frames = [page.mainFrame()].concat(page.frames());
-        let filled = false;
+          }
+          return false;
+        };
+        let acted = false;
+        if (b.account) acted = (await fill('input[name=username], input[name=email], input[type=text]', b.account)) || acted;
+        if (b.password) acted = (await fill('input[type=password]', b.password)) || acted;
+        if (b.code) acted = (await fill('input[inputmode=numeric], input[name=code], input[type=text]', b.code)) || acted;
+        if (!acted) return res.status(400).json({ error: '页面上找不到可填写的输入框（结构可能变了）' });
         for (const f of frames) {
           try {
-            const acc = await f.$('input[name=username], input[name=email], input[type=text]');
-            const pwd = await f.$('input[type=password]');
-            if (acc && pwd) {
-              await acc.fill(account, { timeout: 5000 }).catch(() => {});
-              await pwd.fill(password, { timeout: 5000 }).catch(() => {});
-              filled = true;
-              break;
-            }
+            await f.click('button[type=submit]', { timeout: 2000 });
+            break;
           } catch (_) {}
         }
-        if (!filled) throw new Error('没找到登录表单');
-        for (const f of frames) {
-          try { await f.click('button[type=submit]', { timeout: 2000 }); break; } catch (_) {}
-        }
-        for (let i = 0; i < 25; i++) {
-          await page.waitForTimeout(1000);
-          if (loggedIn(page)) return res.json({ ok: true, loggedIn: true });
-        }
-        res.json({ needManual: true, reason: '出现验证/或凭据有误', note: '验证码处理逻辑与卖家中心一致' });
+        set('loading', '已提交，正在验证…');
+        res.json({ ok: true });
       } catch (e) {
         res.status(500).json({ error: e.message });
       }
     });
 
-    app.get('/api/tiktok-login/status', async (req, res) => {
+    /** 关闭会话 / 退出 */
+    app.post('/api/tiktok-login/close', async (req, res) => {
+      await closeSession();
+      set('idle', '');
+      res.json({ ok: true });
+    });
+
+    /** 已登录账号列表（多账号：每个 profile 目录 = 一个账号） */
+    app.get('/api/tiktok-login/accounts', (req, res) => {
+      const root = path.join(ctx.baseDir, 'data', 'profiles-tiktok');
+      let names = [];
       try {
-        if (!tctx) {
-          // 冷启动检查：无头开一次看是否已登录（profile 里有会话）
-          const c = await launch(ctx, true);
-          const pg = c.pages()[0] || (await c.newPage());
-          await pg.goto('https://www.tiktok.com/foryou', { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
-          await pg.waitForTimeout(3000);
-          return res.json({ loggedIn: loggedIn(pg), url: pg.url().slice(0, 120) });
-        }
-        const pg = tctx.pages()[0];
-        return res.json({ open: true, loggedIn: pg ? loggedIn(pg) : false });
-      } catch (e) {
-        res.status(500).json({ error: e.message });
-      }
+        names = fs.readdirSync(root).filter((f) => {
+          try {
+            return fs.statSync(path.join(root, f)).isDirectory();
+          } catch (_) {
+            return false;
+          }
+        });
+      } catch (_) {}
+      res.json({ accounts: names, current: profileName });
     });
 
-    log('TikTok 登录模块已挂载：/api/tiktok-login/*');
+    log('TikTok 登录模块已挂载：/api/tiktok-login/*（常驻会话 + 实时状态）');
   },
 };

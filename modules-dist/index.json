@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-10T12:32:51.823Z",
+  "generatedAt": "2026-10-10T12:43:07.701Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -42,8 +42,8 @@
       "description": "登录 TikTok 账号（扫码优先，可切账密/邮箱，全程无头不弹窗）。登录后可解锁：自己账号的创作中心数据（平均观看时长/完播率/流量来源/受众画像）、完整评论区、关注粉丝列表。",
       "author": "liyangru",
       "requires": [],
-      "size": 3984,
-      "sha256": "05eea8384e9d469dcd2fcfdf8f93377abaedb3cdfc573182507d0d5c70f0b15e",
+      "size": 6132,
+      "sha256": "f17b84e7d55ce26b08112941cea0c95a90dda58e70d9ca18e41ed6f3201e532b",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/tiktok-login-1.0.0.tar.gz"
     },
     {
