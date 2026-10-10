@@ -529,7 +529,8 @@ module.exports = {
     });
 
     const SELLER_DIR_REF = SELLER_DIR;
-    const CRED_FILE = path.join(ctx.baseDir, 'data', 'credentials.json');
+    // ⚠️ 平台凭据必须分开存：卖家中心与 TikTok 账号不是一回事，混用会导致登录到错误站点
+    const CRED_FILE = path.join(ctx.baseDir, 'data', 'credentials', 'seller-center.json');
 
     /** 凭据存本地（base64 遮一层，仅防误读；不进 git、不上云） */
     const readCreds = () => {
@@ -543,16 +544,31 @@ module.exports = {
       fs.writeFileSync(CRED_FILE, JSON.stringify({ account, p: Buffer.from(password, 'utf8').toString('base64') }));
     };
 
+    // 一次性迁移：旧版把凭据放在 data/credentials.json（与其它平台混用），搬到独立文件
+    (() => {
+      const old = path.join(ctx.baseDir, 'data', 'credentials.json');
+      try {
+        if (fs.existsSync(old) && !fs.existsSync(CRED_FILE)) {
+          const j = JSON.parse(fs.readFileSync(old, 'utf8'));
+          if (j && j.account) {
+            fs.mkdirSync(path.dirname(CRED_FILE), { recursive: true });
+            fs.writeFileSync(CRED_FILE, JSON.stringify(j));
+            log('已把旧凭据迁移到 data/credentials/seller-center.json');
+          }
+        }
+      } catch (_) {}
+    })();
+
     app.get('/api/seller-import/credentials', (req, res) => {
       const c = readCreds();
-      res.json({ account: c.account, password: c.password, has: !!(c.account && c.password) });
+      res.json({ platform: 'seller-center', account: c.account, password: c.password, has: !!(c.account && c.password) });
     });
     app.post('/api/seller-import/credentials', (req, res) => {
       const a = String((req.body && req.body.account) || '').trim();
       const p2 = String((req.body && req.body.password) || '');
       if (!a || !p2) return res.status(400).json({ error: '账号密码都要有' });
       writeCreds(a, p2);
-      res.json({ ok: true, note: '已保存到本机 data/credentials.json（不上云）' });
+      res.json({ ok: true, note: '已保存到本机 data/credentials/seller-center.json（不上云）' });
     });
 
     // 启动时若存了凭据 → 后台自动无头登录一次（免二次输入）

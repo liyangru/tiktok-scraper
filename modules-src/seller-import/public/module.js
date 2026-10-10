@@ -5,6 +5,46 @@
 
   function mount(root, ctx) {
     const t = ctx.t;
+
+    /* 从「设置 → 登录」的小弹窗进入时，只渲染登录表单（数据导入部分留在主界面） */
+    if (ctx.loginOnly) {
+      root.innerHTML = `
+        <div class="si-hint">${esc(t('loginNote'))}</div>
+        <div class="si-row">
+          <input id="siAcc" class="si-select" placeholder="${esc(t('siAcc'))}" style="min-width:180px">
+          <input id="siPwd" class="si-select" type="password" placeholder="${esc(t('siPwd'))}" style="min-width:160px">
+          <button id="siLogin" class="btn-like primary">${esc(t('siLogin'))}</button>
+        </div>
+        <div class="si-hint">${esc(t('siLoginHint'))}
+          <label style="margin-left:8px"><input type="checkbox" id="siRemember" checked> ${esc(t('siRemember'))}</label>
+        </div>
+        <div id="siStatus" class="si-status"></div>`;
+      const $q = (x) => root.querySelector(x);
+      const st = (m, c) => { const e = $q('#siStatus'); e.textContent = m || ''; e.className = 'si-status' + (c ? ' ' + c : ''); };
+      (async () => {
+        const c = await fetch('/api/seller-import/credentials').then((x) => x.json()).catch(() => null);
+        if (c && c.account) { $q('#siAcc').value = c.account; $q('#siPwd').value = c.password || ''; }
+      })();
+      $q('#siLogin').addEventListener('click', async () => {
+        const account = $q('#siAcc').value.trim();
+        const password = $q('#siPwd').value;
+        if (!account || !password) return st(t('siNeedAccPwd'), 'err');
+        if ($q('#siRemember').checked) {
+          fetch('/api/seller-import/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ account, password }) }).catch(() => {});
+        }
+        st(t('siLoggingIn'));
+        try {
+          const r = await fetch('/api/seller-import/login', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account, password }),
+          }).then((x) => x.json());
+          if (r.error) throw new Error(r.error);
+          st(r.needManual ? t('siNeedManual', { reason: r.reason || '' }) : t('siLoginOk'), r.needManual ? 'err' : 'ok');
+        } catch (e) { st(e.message, 'err'); }
+      });
+      return;
+    }
+
     root.innerHTML = `
       <div class="si-rule">${esc(t('siRule'))}</div>
       <div class="si-login">
@@ -19,7 +59,7 @@
       </div>
       <div class="si-hint">${esc(t('siSellerDataHint'))}</div>
       <div class="si-row">
-        <button id="siOpenSeller" class="btn-like">${esc(t('siOpenSeller'))}</button>
+        <button id="siOpenSeller" class="btn-like primary">${esc(t('siOneClick'))}</button>
         <span class="si-hint">${esc(t('siOpenSellerHint'))}</span>
       </div>
       <div class="si-row">

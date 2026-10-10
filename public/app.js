@@ -663,7 +663,9 @@ async function mountModulePanels() {
   if (!host) return;
   let data;
   try { data = await fetch('/api/modules').then((x) => x.json()); } catch (_) { return; }
-  const enabled = (data.modules || []).filter((m) => m.installed && m.enabled);
+  // 纯登录模块不进主界面（只从「设置 → 登录」的小弹窗进入）
+  const LOGIN_ONLY = ['tiktok-login'];
+  const enabled = (data.modules || []).filter((m) => m.installed && m.enabled && !LOGIN_ONLY.includes(m.id));
   for (const m of enabled) {
     const el = document.createElement('section');
     el.className = 'panel module-panel';
@@ -686,3 +688,74 @@ async function mountModulePanels() {
 }
 
 mountModulePanels();
+
+
+/* ================= 提示气泡（可关闭 / 可不再显示） ================= */
+const TIP_NEVER = 'tt.tip.login.never';
+const TIP_SESSION = 'tt.tip.login.sessionClosed';
+
+function initTipBubble() {
+  const b = $('#tipBubble');
+  if (!b) return;
+  const never = localStorage.getItem(TIP_NEVER) === '1';
+  const closedThisSession = sessionStorage.getItem(TIP_SESSION) === '1';
+  if (never || closedThisSession) return;
+  b.style.display = 'flex';
+
+  // × ：本次会话不再显示，下次启动会回来
+  $('#tipClose').addEventListener('click', () => {
+    sessionStorage.setItem(TIP_SESSION, '1');
+    b.style.display = 'none';
+  });
+  // 不再显示：永久关闭
+  $('#tipNever').addEventListener('click', () => {
+    localStorage.setItem(TIP_NEVER, '1');
+    b.style.display = 'none';
+    toast(t('tipNeverDone'), 'ok');
+  });
+  // 登录：打开应用内小弹窗（不是浏览器窗口）
+  $('#tipLogin').addEventListener('click', () => openLogin('tiktok-login'));
+}
+
+/* ================= 登录弹窗（应用内小窗，承载登录类模块） ================= */
+const LOGIN_MODULE_TITLE = { 'tiktok-login': 'loginTiktok', 'seller-import': 'loginSeller' };
+
+async function openLogin(moduleId) {
+  const m = $('#loginModal');
+  if (!m) return;
+  $('#loginTitle').textContent = t(LOGIN_MODULE_TITLE[moduleId] || 'loginTitle');
+  const body = $('#loginBody');
+  body.innerHTML = `<div class="m-loading">${esc(t('loading'))}</div>`;
+  m.style.display = 'flex';
+  try {
+    await loadScript(`/modules/${moduleId}/module.js`);
+    const reg = window.TTModule.get(moduleId);
+    if (!reg || typeof reg.mount !== 'function') throw new Error(t('moduleNoFrontend'));
+    body.innerHTML = '';
+    reg.mount(body, { t, loginOnly: true });
+  } catch (e) {
+    body.innerHTML = `<div class="si-status err">${esc(e.message)}</div>`;
+  }
+}
+
+function closeLogin() {
+  const m = $('#loginModal');
+  if (m) m.style.display = 'none';
+  $('#loginBody').innerHTML = '';
+}
+
+function initLoginModal() {
+  const m = $('#loginModal');
+  if (!m) return;
+  $('#loginClose').addEventListener('click', closeLogin);
+  m.addEventListener('click', (e) => {
+    if (e.target === m) closeLogin();
+  });
+  const a = $('#setLoginTiktok');
+  const b = $('#setLoginSeller');
+  if (a) a.addEventListener('click', () => openLogin('tiktok-login'));
+  if (b) b.addEventListener('click', () => openLogin('seller-import'));
+}
+
+initTipBubble();
+initLoginModal();

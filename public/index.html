@@ -179,11 +179,25 @@
 
     <div class="modal-body">
       <div class="m-actions">
+        <button type="button" id="setLoginTiktok" class="primary" data-i18n="loginTiktok"></button>
+        <button type="button" id="setLoginSeller" data-i18n="loginSeller"></button>
         <button type="button" id="modRefresh" data-i18n="modulesRefresh"></button>
       </div>
       <div id="moduleList" class="module-list"></div>
       <div id="moduleHint" class="module-hint"></div>
     </div>
+  </div>
+</div>
+
+<!-- 登录小弹窗（应用内，非浏览器窗口） -->
+<div class="modal-backdrop" id="loginModal" style="display:none">
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 id="loginTitle" data-i18n="loginTitle"></h2>
+      <button type="button" class="modal-close" id="loginClose" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-note" data-i18n="loginNote"></div>
+    <div class="modal-body" id="loginBody"></div>
   </div>
 </div>
 
