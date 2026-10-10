@@ -553,3 +553,28 @@ thead th.on .ar { color: var(--ink); }
 .modal-player { width: min(900px, 94vw); }
 .player-body { display: flex; flex-direction: column; gap: 12px; }
 #playerVideo { width: 100%; max-height: 62vh; background: var(--ink); border-radius: var(--r); }
+
+/* 历史任务：全选 / 批量清除 / 悬浮删除 */
+.hist-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.hist-all { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-2); cursor: pointer; }
+.lk-danger {
+  padding: 4px 12px; border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--r-pill); font-size: 12px; cursor: pointer; color: var(--ink-2);
+}
+.lk-danger:hover { color: var(--err); border-color: var(--err); }
+.hist-item { position: relative; }
+.hist-pick { margin-right: 8px; }
+.hist-x {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border: 0; background: transparent; color: var(--ink-3);
+  font-size: 15px; line-height: 1; cursor: pointer; border-radius: var(--r-sm);
+  opacity: 0; transition: opacity .15s;
+}
+.hist-item:hover .hist-x { opacity: 1; }
+.hist-x:hover { background: var(--line-soft); color: var(--err); }
+
+/* 账号分组标题行 */
+.grp-tr > td { background: var(--surface-2); border-top: 1px solid var(--line); padding: 8px 12px !important; }
+.grp-name { font-weight: 650; color: var(--ink); font-size: 13px; margin-right: 12px; }
+.grp-meta { font-size: 12px; color: var(--ink-3); }
+#grpBtn.on, #ecCompareBtn.on { background: var(--ink); color: #fff; border-color: var(--ink); }

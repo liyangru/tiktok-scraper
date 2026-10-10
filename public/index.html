@@ -56,8 +56,14 @@
         <div class="btn-row" style="margin:-4px 0 14px">
           <button type="button" data-range="thisMonth" style="font-size:11.5px;padding:4px 9px" data-i18n="thisMonth"></button>
           <button type="button" data-range="lastMonth" style="font-size:11.5px;padding:4px 9px" data-i18n="lastMonth"></button>
-          <button type="button" data-range="last3" style="font-size:11.5px;padding:4px 9px" data-i18n="last3"></button>
+          <button type="button" data-range="lastWeek" style="font-size:11.5px;padding:4px 9px" data-i18n="lastWeek"></button>
+          <button type="button" data-range="last90" style="font-size:11.5px;padding:4px 9px" data-i18n="last90"></button>
+          <button type="button" data-range="q1" style="font-size:11.5px;padding:4px 9px">Q1</button>
+          <button type="button" data-range="q2" style="font-size:11.5px;padding:4px 9px">Q2</button>
+          <button type="button" data-range="q3" style="font-size:11.5px;padding:4px 9px">Q3</button>
+          <button type="button" data-range="q4" style="font-size:11.5px;padding:4px 9px">Q4</button>
           <button type="button" data-range="all" style="font-size:11.5px;padding:4px 9px" data-i18n="all"></button>
+          <button type="button" id="cmpBtn" style="font-size:11.5px;padding:4px 9px" data-i18n="cmpBtn"></button>
         </div>
 
         <button type="button" id="startBtn" class="primary wide" data-i18n="start"></button>
@@ -81,7 +87,12 @@
       </div>
 
       <div class="panel">
-        <h2 class="sec-title"><span data-i18n="history">历史任务</span></h2>
+        <h2 class="sec-title"><span data-i18n="history">历史任务</span>
+          <span class="hint" id="histMeta"></span></h2>
+        <div class="hist-actions">
+          <label class="hist-all"><input type="checkbox" id="histAll"> <span data-i18n="histSelectAll"></span></label>
+          <button type="button" id="histDel" class="lk-danger" data-i18n="histDelete"></button>
+        </div>
         <div id="history"></div>
       </div>
     </div>
@@ -125,6 +136,8 @@
           <div style="flex:1"></div>
           <div class="btn-row">
             <button type="button" id="aiPeriodBtn" data-i18n="aiPeriod"></button>
+            <button type="button" id="ecCompareBtn" data-i18n="ecCompare"></button>
+            <button type="button" id="grpBtn" data-i18n="grpToggle"></button>
             <button type="button" id="exportXlsx" class="primary" disabled data-i18n="downloadXlsx"></button>
             <button type="button" id="exportCsv" disabled data-i18n="downloadCsv"></button>
           </div>
@@ -210,6 +223,26 @@
       <div id="moduleList" class="module-list"></div>
       <div id="moduleHint" class="module-hint"></div>
     </div>
+  </div>
+</div>
+
+<!-- 对比日期（小窗） -->
+<div class="modal-backdrop" id="cmpModal" style="display:none">
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 data-i18n="cmpTitle"></h2>
+      <button type="button" class="modal-close" id="cmpClose" aria-label="关闭">×</button>
+    </div>
+    <div class="si-hint" data-i18n="cmpNote"></div>
+    <div class="si-row">
+      <input type="date" id="cmpFrom" class="si-select">
+      <input type="date" id="cmpTo" class="si-select">
+    </div>
+    <div class="si-row">
+      <button type="button" id="cmpOk" class="btn-like primary" data-i18n="cmpOk"></button>
+      <button type="button" id="cmpClear" class="btn-like" data-i18n="cmpClear"></button>
+    </div>
+    <div id="cmpStatus" class="si-status"></div>
   </div>
 </div>
 

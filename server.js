@@ -290,8 +290,16 @@ app.post('/api/scrape', async (req, res) => {
     return res.status(500).json({ error: '没找到 Chrome/Chromium，请设置环境变量 CHROME_PATH 指向浏览器可执行文件' });
   }
 
-  const to = body.to || todayBangkok();
-  const from = body.from || to.slice(0, 8) + '01';
+  let to = body.to || todayBangkok();
+  let from2 = body.from;
+  // 对比期：把抓取范围扩成「本期 ∪ 对比期」，前端再按期切分对比
+  const cmpFrom = body.compareFrom || '';
+  const cmpTo = body.compareTo || '';
+  if (cmpFrom && cmpTo) {
+    if (!from2 || cmpFrom < from2) from2 = cmpFrom;
+    if (cmpTo > to) to = cmpTo;
+  }
+  const from = from2 || to.slice(0, 8) + '01';
 
   const job = {
     id: newId(),
@@ -384,6 +392,35 @@ async function runJob(job) {
     console.log(`  ⚠ 视频库写入失败：${e.message}`);
   }
 }
+
+/** 删除任务（单条） */
+app.delete('/api/jobs/:id', (req, res) => {
+  const id = req.params.id;
+  try {
+    jobs.delete(id);
+    const f = path.join(DATA_DIR, `${id}.json`);
+    if (fs.existsSync(f)) fs.unlinkSync(f);
+    res.json({ ok: true, id });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+/** 批量删除任务 */
+app.post('/api/jobs/delete', (req, res) => {
+  const ids = (req.body && req.body.ids) || [];
+  if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: '没有选中任务' });
+  let n = 0;
+  for (const id of ids) {
+    try {
+      jobs.delete(id);
+      const f = path.join(DATA_DIR, `${id}.json`);
+      if (fs.existsSync(f)) fs.unlinkSync(f);
+      n++;
+    } catch (_) {}
+  }
+  res.json({ ok: true, deleted: n });
+});
 
 /** 查询任务 */
 app.get('/api/jobs/:id', (req, res) => {

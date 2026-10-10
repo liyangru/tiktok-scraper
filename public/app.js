@@ -128,20 +128,122 @@ function init() {
         const py = m === 1 ? y - 1 : y;
         const last = new Date(Date.UTC(py, pm, 0)).getUTCDate();
         set(`${py}-${pad(pm)}-01`, `${py}-${pad(pm)}-${pad(last)}`);
-      } else if (r === 'last3') {
-        let pm = m - 2;
-        let py = y;
-        if (pm <= 0) {
-          pm += 12;
-          py -= 1;
-        }
-        set(`${py}-${pad(pm)}-01`, t0);
+      } else if (r === 'lastWeek') {
+        // 上周（自然周：上周一 ~ 上周日）
+        const now = new Date(t0 + 'T00:00:00Z');
+        const dow = now.getUTCDay() === 0 ? 7 : now.getUTCDay(); // 周一=1 … 周日=7
+        const thisMon = new Date(now.getTime() - (dow - 1) * 86400000);
+        const lastMon = new Date(thisMon.getTime() - 7 * 86400000);
+        const lastSun = new Date(thisMon.getTime() - 86400000);
+        set(lastMon.toISOString().slice(0, 10), lastSun.toISOString().slice(0, 10));
+      } else if (r === 'last90') {
+        set(new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10), t0);
+      } else if (/^q[1-4]$/.test(r)) {
+        const q = Number(r[1]);
+        const sm = (q - 1) * 3 + 1;
+        const em = sm + 2;
+        const lastDay = new Date(Date.UTC(y, em, 0)).getUTCDate();
+        set(`${y}-${pad(sm)}-01`, `${y}-${pad(em)}-${pad(lastDay)}`);
       } else if (r === 'all') set('2020-01-01', t0);
     })
   );
 
+  initCompare();
   checkHealth();
   loadHistory();
+}
+
+/* ================= 对比日期（小窗，默认同期天数） ================= */
+const cmp = { from: '', to: '' };
+
+function daysBetween(a, b) {
+  if (!a || !b) return 0;
+  return Math.round((new Date(b + 'T00:00:00Z') - new Date(a + 'T00:00:00Z')) / 86400000) + 1;
+}
+
+function suggestCompare() {
+  // 默认：与本期**同一天数**、紧邻本期之前
+  const f = $('#from').value;
+  const to = $('#to').value;
+  if (!f || !to) return null;
+  const n = daysBetween(f, to);
+  const end = new Date(new Date(f + 'T00:00:00Z').getTime() - 86400000);
+  const start = new Date(end.getTime() - (n - 1) * 86400000);
+  return { from: start.toISOString().slice(0, 10), to: end.toISOString().slice(0, 10), days: n };
+}
+
+function initCompare() {
+  const m = $('#cmpModal');
+  if (!m) return;
+  const close = () => { m.style.display = 'none'; };
+  $('#cmpClose').addEventListener('click', close);
+  m.addEventListener('click', (e) => { if (e.target === m) close(); });
+  $('#cmpBtn').addEventListener('click', () => {
+    const s = suggestCompare();
+    if (s && !$('#cmpFrom').value) { $('#cmpFrom').value = s.from; $('#cmpTo').value = s.to; }
+    $('#cmpStatus').textContent = s ? t('cmpSuggest', { n: s.days }) : '';
+    m.style.display = 'flex';
+  });
+  $('#cmpOk').addEventListener('click', () => {
+    cmp.from = $('#cmpFrom').value;
+    cmp.to = $('#cmpTo').value;
+    if (!cmp.from || !cmp.to) { $('#cmpStatus').textContent = t('cmpNeedBoth'); return; }
+    $('#cmpBtn').textContent = `${t('cmpBtn')} ${cmp.from.slice(5)}~${cmp.to.slice(5)}`;
+    close();
+    toast(t('cmpSet', { from: cmp.from, to: cmp.to }), 'ok');
+  });
+  $('#cmpClear').addEventListener('click', () => {
+    cmp.from = cmp.to = '';
+    $('#cmpFrom').value = $('#cmpTo').value = '';
+    $('#cmpBtn').textContent = t('cmpBtn');
+    close();
+  });
+}
+
+/* ================= 历史任务：全选 / 批量清除 / 悬浮 × ================= */
+function initHistoryActions() {
+  const all = $('#histAll');
+  if (!all) return;
+  all.addEventListener('change', () => {
+    $$('#history input[data-pick]').forEach((c) => { c.checked = all.checked; });
+    updateHistMeta();
+  });
+  $('#histDel').addEventListener('click', async () => {
+    const ids = $$('#history input[data-pick]').filter((c) => c.checked).map((c) => c.dataset.pick);
+    if (!ids.length) return toast(t('histNonePicked'), 'err');
+    if (!confirm(t('histConfirm', { n: ids.length }))) return;
+    try {
+      const r = await fetch('/api/jobs/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      }).then((x) => x.json());
+      if (r.error) throw new Error(r.error);
+      toast(t('histDeleted', { n: r.deleted }), 'ok');
+      loadHistory();
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+  });
+}
+
+function updateHistMeta() {
+  const meta = $('#histMeta');
+  if (!meta) return;
+  const n = $$('#history input[data-pick]').filter((c) => c.checked).length;
+  meta.textContent = n ? t('histPicked', { n }) : '';
+}
+
+async function deleteOneJob(id) {
+  if (!confirm(t('histConfirmOne'))) return;
+  try {
+    const r = await fetch('/api/jobs/' + encodeURIComponent(id), { method: 'DELETE' }).then((x) => x.json());
+    if (r.error) throw new Error(r.error);
+    toast(t('histDeleted', { n: 1 }), 'ok');
+    loadHistory();
+  } catch (e) {
+    toast(e.message, 'err');
+  }
 }
 
 function setBusy(b) {
@@ -200,6 +302,8 @@ async function start() {
         from: $('#from').value,
         to: $('#to').value,
         concurrency: 1, // 固定顺序执行（并发选择器已移除：实测并发会显著提高失败率）
+        compareFrom: cmp.from || undefined,
+        compareTo: cmp.to || undefined,
       }),
     });
     const j = await res.json();
@@ -373,6 +477,27 @@ function renderEc(rows) {
   }).join('');
 }
 
+function rowHtml(r, i) {
+  return `<tr data-vid="${esc(r.vid)}">
+      <td class="num">${i + 1}</td>
+      <td class="mono">@${esc(r.account)}</td>
+      <td class="mono">${esc(r.date)}</td>
+      <td class="mono">${esc(r.time)}</td>
+      <td class="desc"><div class="d">${esc(r.desc) || `<span style="color:var(--ink-3)">${esc(t('noCaption'))}</span>`}</div></td>
+      <td class="num">${fmt(r.views)}</td>
+      <td class="num">${fmt(r.likes)}</td>
+      <td class="num">${fmt(r.comments)}</td>
+      <td class="num">${fmt(r.shares)}</td>
+      <td class="num">${fmt(r.saves)}</td>
+      <td class="num">${fmt(r.reposts)}</td>
+      <td class="num">${(r.inter * 100).toFixed(2)}%</td>
+      <td class="num">${r.duration}s</td>
+      <td class="ctr">${r.isEC ? `<span class="ec">${esc(t('yesShort'))}</span>` : '<span class="dim">—</span>'}</td>
+      <td class="ctr"><button type="button" class="row-dl" data-vid="${esc(r.vid)}" title="${esc(t('colDownload'))}">⤓</button></td>
+      <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('colOpen'))}</a></td>
+    </tr>`;
+}
+
 function renderResults() {
   if (!state.rows.length) {
     if (!state.busy) $('#resultsPanel').style.display = 'none';
@@ -438,29 +563,28 @@ function renderResults() {
   rows = sortRows(rows);
 
   bindRowClick();
-  $('#rows').innerHTML = rows
-    .map(
-      (r, i) => `<tr data-vid="${esc(r.vid)}">
-      <td class="num">${i + 1}</td>
-      <td class="mono">@${esc(r.account)}</td>
-      <td class="mono">${esc(r.date)}</td>
-      <td class="mono">${esc(r.time)}</td>
-      <td class="desc"><div class="d">${esc(r.desc) || `<span style="color:var(--ink-3)">${esc(t('noCaption'))}</span>`}</div></td>
-      <td class="num">${fmt(r.views)}</td>
-      <td class="num">${fmt(r.likes)}</td>
-      <td class="num">${fmt(r.comments)}</td>
-      <td class="num">${fmt(r.shares)}</td>
-      <td class="num">${fmt(r.saves)}</td>
-      <td class="num">${fmt(r.reposts)}</td>
-      <td class="num">${(r.inter * 100).toFixed(2)}%</td>
-      <td class="num">${r.duration}s</td>
-      <td class="ctr">${r.isEC ? `<span class="ec">${esc(t('yesShort'))}</span>` : '<span class="dim">—</span>'}</td>
-      <td class="ctr"><button type="button" class="row-dl" data-vid="${esc(r.vid)}" title="${esc(t('colDownload'))}">⤓</button></td>
-      <td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(t('colOpen'))}</a></td>
-    </tr>`
-    )
-    .join('');
+  $('#rows').innerHTML = rows.map((r, i) => rowHtml(r, i + 1)).join('');
 
+  // 按账号分组：切换「分组显示」时插入分组标题行
+  if (state.groupByAccount) {
+    const tb = $('#rows');
+    const groups = {};
+    for (const r of rows) (groups[r.account] = groups[r.account] || []).push(r);
+    const parts = [];
+    for (const [acc, list] of Object.entries(groups)) {
+      const tv = list.reduce((x, r) => x + (r.views || 0), 0);
+      const tl = list.reduce((x, r) => x + (r.likes || 0), 0);
+      parts.push(
+        `<tr class="grp-tr"><td colspan="16"><span class="grp-name">@${esc(acc)}</span>` +
+          `<span class="grp-meta">${list.length} ${t('items')} · ${fmt(tv)} ${t('colViews')} · ${fmt(tl)} ${t('colLikes')} · ${t('grpAvg')} ${fmt(Math.round(tv / list.length))}</span></td></tr>`
+      );
+      for (const r of list) parts.push(rowHtml(r, list.indexOf(r) + 1));
+    }
+    tb.innerHTML = parts.join('');
+  } else {
+    tb.innerHTML = rows.map((r, i) => rowHtml(r, i + 1)).join('');
+  }
+  bindRowClick();
   $('#tableMeta').textContent = `${rows.length} ${t('items')} · ${t('byViews')}`;
   updateExportState();
 }
@@ -486,13 +610,22 @@ function renderHistory(list) {
     (list || [])
       .map(
         (j) => `<div class="hist-item">
+      <input type="checkbox" data-pick="${esc(j.id)}" class="hist-pick">
       <span class="id">${esc(j.id.slice(-6))}</span>
       <span class="hs">${esc(j.handles.map((h) => '@' + h).join(' '))} <span style="color:#a8a8a8">${esc(j.from)}~${esc(j.to)}</span></span>
       <span class="badge ${j.status === 'done' ? 'ok' : j.status === 'error' ? 'err' : ''}">${j.rowCount || 0}</span>
       <button class="lk" data-open="${esc(j.id)}">${esc(t('view'))}</button>
+      <button class="hist-x" data-del="${esc(j.id)}" title="${esc(t('histDelete'))}">×</button>
     </div>`
       )
       .join('') || `<div class="empty">${esc(t('noHistory'))}</div>`;
+  $$('#history input[data-pick]').forEach((c) => c.addEventListener('change', updateHistMeta));
+  $$('#history [data-del]').forEach((b) =>
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteOneJob(b.dataset.del);
+    })
+  );
   $$('#history [data-open]').forEach((b) =>
     b.addEventListener('click', () => {
       state.jobId = b.dataset.open;
@@ -859,6 +992,16 @@ document.addEventListener('click', (e) => {
 });
 
 /* AI 时期分析（整体，常驻入口） */
+/* 挂车对比：从弹窗打开（不再常驻主页） */
+function initEcCompare() {
+  const b = $('#ecCompareBtn');
+  if (!b) return;
+  b.addEventListener('click', () => {
+    if (!currentJobId()) return toast(t('siNeedJob'), 'err');
+    openTool('seller-import');
+  });
+}
+
 function initAiPeriod() {
   const b = $('#aiPeriodBtn');
   if (!b) return;

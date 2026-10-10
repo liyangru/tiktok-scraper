@@ -173,10 +173,15 @@ async function ensureSession(ctx, name) {
   const chromium = ctx.core.chromium;
   if (!chromium) throw new Error('核心没有提供 chromium');
   const exe = ctx.core.scraper.resolveChromePath();
-  // ⚠️ 必须**有头**：TikTok 对无头会话不完成登录（用户实测扫码后无反应）。
-  //    登录用真实窗口，成功检测到后自动关窗。
+  /**
+   * 首次登录必须**有头**（TikTok 对无头会话不完成登录，用户实测扫码后无反应）；
+   * 已经有登录态（profile 里存了 Cookies）时走无头，避免每次都弹窗。
+   */
+  const hasSession = (() => {
+    try { return fs.existsSync(path.join(profileDir(ctx, profileName), 'Default', 'Cookies')); } catch (_) { return false; }
+  })();
   ctxRef = await chromium.launchPersistentContext(profileDir(ctx, profileName), {
-    headless: false,
+    headless: hasSession,
     viewport: { width: 1280, height: 900 },
     args: ['--no-first-run', '--disable-dev-shm-usage'],
     ...(exe ? { executablePath: exe } : {}),
