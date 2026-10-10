@@ -897,7 +897,9 @@ async function initQuickAcc() {
     const jobs = await fetch('/api/jobs').then((x) => x.json());
     for (const j of jobs || []) {
       for (const h of j.handles || []) {
-        if (h && !names.includes(h)) names.push(h);
+        // TikTok 用户名只含小写字母/数字/._，其它一律是脏数据（例如浏览器内部目录名）
+        if (!h || !/^[a-z0-9._]{2,30}$/.test(h)) continue;
+        if (!names.includes(h)) names.push(h);
         if (names.length >= 3) break;
       }
       if (names.length >= 3) break;

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-10T13:56:33.053Z",
+  "generatedAt": "2026-10-10T14:22:59.053Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -31,8 +31,8 @@
       "description": "导入卖家中心导出的「视频表现」xlsx，按视频ID与应用抓到的 TikTok 视频交叉匹配：匹配上=挂车（补 GMV/订单等商家指标），TikTok 有而卖家中心没有=没挂车，卖家中心有而 TikTok 没有=广告计划/混剪（自动剔除，不污染数据）。",
       "author": "liyangru",
       "requires": [],
-      "size": 14673,
-      "sha256": "f159213b22fd8b28ff944051f6d121dcd6f8e4fd5d39c534860244bfb00b74df",
+      "size": 14897,
+      "sha256": "473d2fb6e879b63002ce45faa526f0ac2d6e818a52cf81413a93278008b0579a",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/seller-import-1.0.0.tar.gz"
     },
     {
@@ -53,8 +53,8 @@
       "description": "四种模式下载视频：单个链接 / 批量链接 / 整个主页 / 直接给 vid。优先取无水印源流与最高清晰度。",
       "author": "liyangru",
       "requires": [],
-      "size": 8172,
-      "sha256": "59183aade486178aa4cda743892fdc12d4fe9426c028f246a2ee6c64a58d4678",
+      "size": 8355,
+      "sha256": "7aba8b097f5b89dfe28fd84adc42df5f31c5a41cad63fbbef1f83874c9f37afa",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/video-download-1.0.0.tar.gz"
     }
   ]

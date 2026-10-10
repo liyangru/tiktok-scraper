@@ -349,7 +349,10 @@ async function autoLogin(ctx, account, password, opts) {
     for (let i = 0; i < 25; i++) {
       await page.waitForTimeout(1000);
       const u = page.url();
-      if (u && !/account\/login/i.test(u)) return { ok: true };
+      if (u && !/account\/login/i.test(u)) {
+        try { await c.close(); } catch (_) {} // 登录成功立刻关窗（用户要求）
+        return { ok: true };
+      }
       const err = await page
         .evaluate(() => {
           const pat = /(密码错误|账号不存在|用户不存在|登录失败|请输入)/;
@@ -432,6 +435,25 @@ module.exports = {
     });
 
     app.get('/api/seller-import/files', (req, res) => res.json({ files: listFiles() }));
+
+    /**
+     * 卖家中心登录状态：无头打开视频分析页看是否被踢到登录页。
+     * 应用靠它显示「已登录 / 未登录」，也能验证登录到底成没成。
+     */
+    app.get('/api/seller-import/status', async (req, res) => {
+      try {
+        const c = await launchSeller(ctx, true);
+        const page = c.pages()[0] || (await c.newPage());
+        await page.goto(DEFAULT_SELLER_URL, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(() => {});
+        await page.waitForTimeout(3000);
+        const url = page.url();
+        const loggedIn = !/\/account\/login/i.test(url);
+        await c.close().catch(() => {});
+        res.json({ platform: 'seller-center', loggedIn, url: url.slice(0, 120), hasCreds: !!readCreds().account });
+      } catch (e) {
+        res.json({ platform: 'seller-center', loggedIn: false, error: e.message });
+      }
+    });
 
     app.delete('/api/seller-import/files/:name', (req, res) => {
       const f = path.basename(req.params.name);

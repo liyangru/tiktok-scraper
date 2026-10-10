@@ -158,7 +158,20 @@ function openAppWindow(url) {
   try {
     killStaleUiBrowsers();
     const { spawn } = require('child_process');
-    const exe = process.env.CHROME_PATH || path.join(BASE_DIR, 'browsers', 'chromium-1248', 'chrome-win64', 'chrome.exe');
+    // 界面窗口优先用**系统稳定版浏览器**：
+    //   · 没有「Chrome 测试版…仅适用于自动测试」横幅（用户明确不要）
+    //   · 没有 Windows Hello / 保存密码等原生弹窗
+    //   · 体积比自带 Chromium 小、启动快
+    // 自带 Chromium 只用于**无头抓取**（不依赖系统环境）。
+    const UI_CANDIDATES = [
+      process.env.UI_BROWSER_PATH,
+      'C:/Program Files/Google/Chrome/Application/chrome.exe',
+      'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+      'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+      'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+    ].filter(Boolean);
+    let exe = UI_CANDIDATES.find((x) => { try { return fs.existsSync(x); } catch (_) { return false; } });
+    if (!exe) exe = path.join(BASE_DIR, 'browsers', 'chromium-1248', 'chrome-win64', 'chrome.exe'); // 兜底
     if (!fs.existsSync(exe)) return false;
     const profile = path.join(BASE_DIR, 'ui-profile');
     fs.mkdirSync(profile, { recursive: true });
@@ -170,11 +183,14 @@ function openAppWindow(url) {
       `--user-data-dir=${profile}`,
       '--no-first-run',
       '--no-default-browser-check',
-      '--disable-features=ChromeForTestingBanner,Translate,AcceptCHFrame,MediaRouter',
-      '--test-type', // 抑制 Chrome for Testing 的「仅适用于自动测试」提示条
+      '--disable-sync',
+      // 干掉测试版横幅 + 密码管理器 / Windows Hello / 自动填充等原生弹窗
+      '--disable-features=ChromeForTestingBanner,PasswordManagerOnboarding,PasswordManagerEnableAccountStore,AutofillServerCommunication,PasswordLeakDetection,Translate,AcceptCHFrame,MediaRouter,OptimizationHints',
+      '--disable-save-password-bubble',
+      '--disable-infobars',
       '--disable-session-crashed-bubble',
       '--hide-crash-restore-bubble',
-      '--window-size=1440,960',
+      '--window-size=1200,820',
     ], { detached: true, stdio: 'ignore' });
     child.unref();
     return true;

@@ -87,7 +87,7 @@ async function resolveOne(ctx, ref, log) {
       try {
         const j = await r.json();
         const it = digItem(j);
-        if (it) hit = it;
+        if (it && !hit) hit = it;
       } catch (_) {}
     });
 
@@ -107,10 +107,12 @@ async function resolveOne(ctx, ref, log) {
     }
     for (let i = 0; i < 15 && !hit; i++) await page.waitForTimeout(400);
 
-    // 回退：详情页把完整 item 嵌在 <script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"> 里。
-    // 实测这里的数据**比 item_list 全得多** —— playAddr 一定有，bitrateInfo 有 7 档
-    // （item_list 里常常一档都没有），所以这条路其实是**主路径**，不是兜底。
-    if (!hit) {
+    // ⚠️ 关键修复：接口有时返回「残缺对象」（有 id、没播放地址），
+    //    旧逻辑只在 hit 为空时才读内嵌 JSON → 结果拿到残缺对象，pickStreams 出不来直链，
+    //    下载就报「没有可用的播放地址」（用户实测）。
+    //    现在：只要**没有可用播放地址**就去读内嵌 JSON，并优先用有直链的那份。
+    const hasStream = (x) => !!(x && x.video && (x.video.playAddr || (Array.isArray(x.video.bitrateInfo) && x.video.bitrateInfo.length)));
+    if (!hasStream(hit)) {
       const raw = await page.evaluate(() => {
         const s = document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__');
         return s ? s.textContent : '';
@@ -121,7 +123,9 @@ async function resolveOne(ctx, ref, log) {
           const scope = (j && j.__DEFAULT_SCOPE__) || {};
           const vd = scope['webapp.video-detail'];
           const it = vd && vd.itemInfo && vd.itemInfo.itemStruct;
-          if (it) hit = it;
+          // 内嵌 JSON 更全（playAddr 必有、bitrateInfo 常有多档）→ 优先用它
+          if (it && hasStream(it)) hit = it;
+          else if (it && !hit) hit = it;
         } catch (_) {}
       }
     }
