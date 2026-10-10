@@ -121,7 +121,7 @@ CI 会自动：在 GitHub 的机器上构建 **Windows ×2 + macOS ×2 + 部署�
 
 > tag 名要和 changelog 标题对得上（`v1.0.2` ↔ `## [1.0.2]`）；对不上会自动回退成按 commit 生成。
 
-> 🚫 **旧版本的 Release 和 tag 一律保留，不要删。** 每个历史版本都能回溯、能回滚；新版本正常发即可，GitHub 会自动把最新一版标为 Latest。
+> 🚫 **旧版本的 Release 和 tag 默认全部保留，不要自作主张删。** 每个历史版本都要能回溯、能回滚；新版本正常发即可，GitHub 会自动把最新一版标为 Latest。只有明确要求删某个版本时才删。
 
 一条命令建仓库 + 推送 + 打 tag（`scripts/publish-github.sh`）：
 
