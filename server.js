@@ -18,6 +18,8 @@ envfile.load(path.join(BASE_DIR, '.env'));
 
 const settings = require('./lib/settings');
 const modules = require('./lib/modules');
+const videodb = require('./lib/videodb');
+const llm = require('./lib/llm');
 
 const PORT = parseInt(process.env.PORT || '8899', 10);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -236,6 +238,8 @@ function todayBangkok() {
 }
 
 /** 健康检查 */
+app.get('/api/videodb/stats', (req, res) => res.json(videodb.stats()));
+
 app.get('/api/health', (req, res) => {
   const chrome = scraper.resolveChromePath();
   res.json({
@@ -350,6 +354,13 @@ async function runJob(job) {
   job.status = 'done';
   job.finishedAt = new Date().toISOString();
   saveJob(job);
+  // 沉淀进视频数据库（按 vid 去重 + 指标历史），供 AI 分析与趋势使用
+  try {
+    const ing = videodb.ingest(job);
+    console.log(`  [db] 视频库：新增 ${ing.added}，更新 ${ing.updated}`);
+  } catch (e) {
+    console.log(`  ⚠ 视频库写入失败：${e.message}`);
+  }
 }
 
 /** 查询任务 */
@@ -498,6 +509,8 @@ const MODULE_CTX = {
     exceljs: require('exceljs'),
     envfile,
     chromium: require('patchright').chromium, // 套壳浏览器用（卖家中心登录）
+    llm,
+    videodb,
   },
 };
 
