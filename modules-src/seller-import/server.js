@@ -18,6 +18,7 @@
  *   解析时按「表头名」定位列，不按列序号 —— 卖家中心改列序也不怕。
  */
 const fs = require('fs');
+const captcha = require('./captcha.js');
 const path = require('path');
 
 const SELLER_DIR_NAME = 'data' + path.sep + 'seller';
@@ -362,7 +363,18 @@ async function autoLogin(ctx, account, password) {
         })
         .catch(() => '');
       if (/^(密码错误|账号不存在|用户不存在|登录失败)/.test(err)) return { fail: err };
-      if (/CAPTCHA/.test(err) || i >= 14) return { manual: err.replace(/^CAPTCHA:\s*/, '') || '需要人工处理验证' };
+      if (/CAPTCHA/.test(err)) {
+        // 出验证码：有视觉模型就先让 AI 试滑块（最多 3 次），失败才降级为开窗人工
+        const sol = await captcha.solveWithRetry(page, ctx, 3).catch((e) => ({ solved: false, reason: e.message }));
+        if (sol.solved) {
+          for (let k = 0; k < 8; k++) {
+            await page.waitForTimeout(1000);
+            if (!/account\/login/i.test(page.url())) return { ok: true, viaCaptcha: true };
+          }
+        }
+        return { manual: '滑块验证：' + (sol.reason || '未通过') };
+      }
+      if (i >= 14) return { manual: err.replace(/^CAPTCHA:\s*/, '') || '需要人工处理验证' };
     }
     return { manual: '登录超时' };
   } finally {

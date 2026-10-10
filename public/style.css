@@ -443,3 +443,12 @@ thead th.on .ar { color: var(--ink); }
 .ai-out { margin-top: 12px; }
 .ai-md { font-size: 13px; line-height: 1.7; color: var(--ink-2); background: var(--surface-2); border-radius: var(--r); padding: 16px; }
 .ai-md h4 { margin: 12px 0 4px; font-size: 13px; color: var(--ink); }
+
+/* 视频详情展开行 */
+.d-tr > td { background: var(--surface-2); padding: 0 !important; }
+.d-detail { padding: 16px 20px; }
+.d-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 24px; margin-bottom: 12px; }
+.d-grid > div { display: flex; gap: 8px; font-size: 12px; min-width: 0; }
+.dk { color: var(--ink-3); flex-shrink: 0; }
+.dv { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-hist { font-size: 12px; color: var(--ink-2); border-top: 1px solid var(--line-soft); padding-top: 8px; }

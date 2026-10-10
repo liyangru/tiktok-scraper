@@ -437,9 +437,10 @@ function renderResults() {
   }
   rows = sortRows(rows);
 
+  bindRowClick();
   $('#rows').innerHTML = rows
     .map(
-      (r, i) => `<tr>
+      (r, i) => `<tr data-vid="${esc(r.vid)}">
       <td class="num">${i + 1}</td>
       <td class="mono">@${esc(r.account)}</td>
       <td class="mono">${esc(r.date)}</td>
@@ -505,6 +506,45 @@ function renderHistory(list) {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+/* ================= 视频详情（行点击展开，应用内全量；导出仍精简） ================= */
+function bindRowClick() {
+  const tb = $('#rows');
+  if (!tb || tb.dataset.bound) return;
+  tb.dataset.bound = '1';
+  tb.addEventListener('click', async (e) => {
+    const tr = e.target.closest('tr');
+    if (!tr || !tr.parentElement || tr.parentElement.id !== 'rows') return;
+    const next = tr.nextElementSibling;
+    if (next && next.classList.contains('d-tr')) { next.remove(); return; }
+    tb.querySelectorAll('.d-tr').forEach((x) => x.remove());
+    const vid = tr.dataset.vid;
+    const r = currentRows().find((x) => String(x.vid) === String(vid));
+    if (!r) return;
+    const d = document.createElement('tr');
+    d.className = 'd-tr';
+    d.innerHTML = `<td colspan="15"><div class="d-detail"><div class="d-grid">
+      ${[['视频ID', r.vid], ['语种', r.lang || '—'], ['音乐', r.music || '—'], ['分辨率', r.resolution || '—'],
+        ['挂车', r.isEC ? '是' : '—'], ['广告', r.isAd ? '是' : '—'], ['AIGC', r.isAIGC ? '是' : '—'],
+        ['发布时间', r.date + ' ' + r.time], ['时长', r.duration + 's'],
+        ['播放/点赞/评论', fmt(r.views) + ' / ' + fmt(r.likes) + ' / ' + fmt(r.comments)],
+        ['分享/收藏/转发', fmt(r.shares) + ' / ' + fmt(r.saves) + ' / ' + fmt(r.reposts)],
+        ['互动率', pct2(r.inter)], ['下载直链', r.playUrl ? '有（视频下载模块可用）' : 'item_list 未下发，详情页可补']]
+        .map(([k, v]) => `<div><span class="dk">${esc(k)}</span><span class="dv">${esc(v)}</span></div>`).join('')}
+      </div><div class="d-hist" id="dHist-${esc(r.vid)}">${esc(t('loading'))}…</div></div></td>`;
+    tr.after(d);
+    // 历史趋势（来自视频库）
+    try {
+      const v = await fetch('/api/videos/' + encodeURIComponent(r.vid)).then((x) => x.json());
+      const h = v.history || [];
+      d.querySelector('.d-hist').innerHTML = h.length > 1
+        ? '<b>指标历史</b>：' + h.map((x) => `${x.date} 播放${fmt(x.views)}/赞${fmt(x.likes)}`).join(' → ')
+        : '<b>指标历史</b>：只有一次快照，下次抓取同账号后这里会出现增长曲线';
+    } catch (_) { d.querySelector('.d-hist').textContent = ''; }
+  });
+}
+function pct2(n) { return (n * 100).toFixed(2) + '%'; }
+function currentRows() { return state.rows || []; }
 
 /* ================= 设置：模块按需装配 ================= */
 

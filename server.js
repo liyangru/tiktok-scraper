@@ -240,6 +240,12 @@ function todayBangkok() {
 /** 健康检查 */
 app.get('/api/videodb/stats', (req, res) => res.json(videodb.stats()));
 
+app.get('/api/videos/:vid', (req, res) => {
+  const v = videodb.load().videos[String(req.params.vid)];
+  if (!v) return res.status(404).json({ error: 'not found' });
+  res.json(v);
+});
+
 app.get('/api/health', (req, res) => {
   const chrome = scraper.resolveChromePath();
   res.json({

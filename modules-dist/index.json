@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-10T10:00:59.398Z",
+  "generatedAt": "2026-10-10T10:12:58.197Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -31,8 +31,8 @@
       "description": "导入卖家中心导出的「视频表现」xlsx，按视频ID与应用抓到的 TikTok 视频交叉匹配：匹配上=挂车（补 GMV/订单等商家指标），TikTok 有而卖家中心没有=没挂车，卖家中心有而 TikTok 没有=广告计划/混剪（自动剔除，不污染数据）。",
       "author": "liyangru",
       "requires": [],
-      "size": 11982,
-      "sha256": "7d25c052cf58239f83e7da8e638c65c08ba984be0817ce1992fc6b954668000e",
+      "size": 13938,
+      "sha256": "c9c071a56893fc577a9d92e04b7f9449e25d5ad93fce792bda22905831336442",
       "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/seller-import-1.0.0.tar.gz"
     },
     {
