@@ -301,6 +301,76 @@ async function openSellerBrowser(ctx, SELLER_DIR, url, headless) {
   };
 }
 
+/** 统一的卖家浏览器启动（登录/套壳共用） */
+async function launchSeller(ctx, headless) {
+  const chromium = ctx.core.chromium;
+  if (!chromium) throw new Error('核心没有提供 chromium（需要 patchright）');
+  const profile = ensureDir(path.join(ctx.baseDir, 'data', 'profiles-seller'));
+  const exe = ctx.core.scraper.resolveChromePath();
+  return chromium.launchPersistentContext(profile, {
+    headless: !!headless,
+    viewport: { width: 1440, height: 900 },
+    acceptDownloads: true,
+    args: ['--no-first-run', '--disable-dev-shm-usage'].concat(headless ? ['--window-position=-32000,-32000'] : []),
+    ...(exe ? { executablePath: exe } : {}),
+  });
+}
+
+const LOGIN_URL =
+  'https://seller.tiktokshopglobalselling.com/account/login?platform_data_source=shop&shop_region=TH';
+
+/**
+ * 无头自动登录：应用里输入账号密码 → 装填 → 提交 → 轮询结果。
+ * - 成功（URL 离开 /account/login）→ 关掉无头实例（profile 已带登录态），返回 ok
+ * - 明确失败（密码错误等）→ 返回页面上的错误文案
+ * - 其它（大概率是滑块验证码）→ 返回 needManual，调用方切回有头让人只处理验证
+ */
+async function autoLogin(ctx, account, password) {
+  const isEmail = /@/.test(account);
+  const c = await launchSeller(ctx, true);
+  try {
+    const page = c.pages()[0] || (await c.newPage());
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(3500);
+    if (isEmail) {
+      // 默认是手机号 tab，账号含 @ 时先试着切到邮箱 tab（找不到就继续，有些版本同一输入框通吃）
+      try {
+        await page.click('text=/邮箱|Email/i', { timeout: 2000 });
+        await page.waitForTimeout(800);
+      } catch (_) {}
+    }
+    await page.fill('input[name=mobile]', account, { timeout: 8000 }).catch(() => {});
+    await page.fill('input[name=password]', password, { timeout: 8000 }).catch(() => {});
+    await page.click('button[name=loginBtn]', { timeout: 5000 }).catch(() => page.keyboard.press('Enter'));
+
+    for (let i = 0; i < 25; i++) {
+      await page.waitForTimeout(1000);
+      const u = page.url();
+      if (u && !/account\/login/i.test(u)) return { ok: true };
+      const err = await page
+        .evaluate(() => {
+          const pat = /(密码错误|账号不存在|用户不存在|登录失败|请输入)/;
+          const cap = /(滑动|滑块|验证码|captcha|security check)/i;
+          let out = '';
+          document.querySelectorAll('div,span,p').forEach((e) => {
+            const t = (e.textContent || '').trim();
+            if (!t || t.length > 60) return;
+            if (!out && pat.test(t) && e.children.length === 0) out = t;
+            if (!out && cap.test(t) && e.children.length === 0) out = 'CAPTCHA: ' + t;
+          });
+          return out;
+        })
+        .catch(() => '');
+      if (/^(密码错误|账号不存在|用户不存在|登录失败)/.test(err)) return { fail: err };
+      if (/CAPTCHA/.test(err) || i >= 14) return { manual: err.replace(/^CAPTCHA:\s*/, '') || '需要人工处理验证' };
+    }
+    return { manual: '登录超时' };
+  } finally {
+    // 结果处理完由调用方决定是否保留；这里一律关掉无头实例（profile 已保存状态）
+    await c.close().catch(() => {});
+  }
+}
+
 module.exports = {
   register(app, ctx) {
     const { core, config, log } = ctx;
@@ -474,6 +544,32 @@ module.exports = {
 
     app.get('/api/seller-import/browser-status', (req, res) => {
       res.json({ open: !!sellerCtx, pages: sellerCtx ? sellerCtx.pages().length : 0 });
+    });
+
+    /* 应用内登录：账号密码 → 无头装填提交；出验证码时自动切有头让人只处理验证 */
+    app.post('/api/seller-import/login', async (req, res) => {
+      const account = String((req.body && req.body.account) || '').trim();
+      const password = String((req.body && req.body.password) || '');
+      if (!account || !password) return res.status(400).json({ error: '请输入账号和密码' });
+      try {
+        if (sellerCtx) {
+          const c = sellerCtx;
+          sellerCtx = null;
+          await c.close().catch(() => {});
+        }
+        const r = await autoLogin(ctx, account, password);
+        if (r.ok) return res.json({ ok: true, loggedIn: true, note: '登录成功（全程无头，没有弹窗）。登录态已保存。' });
+        if (r.fail) return res.status(400).json({ error: r.fail });
+        // 需要人工（大概率滑块验证）→ 切回有头，复用同一 profile 让用户只处理验证
+        const v = await openSellerBrowser(ctx, SELLER_DIR_REF, LOGIN_URL, false);
+        return res.json({
+          needManual: true,
+          reason: r.manual,
+          note: v.note,
+        });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
     });
 
     log('卖家中心导入模块已挂载：/api/seller-import/*');

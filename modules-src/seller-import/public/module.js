@@ -7,6 +7,14 @@
     const t = ctx.t;
     root.innerHTML = `
       <div class="si-rule">${esc(t('siRule'))}</div>
+      <div class="si-login">
+        <div class="si-row">
+          <input id="siAcc" class="si-select" placeholder="${esc(t('siAcc'))}" autocomplete="off" style="min-width:180px">
+          <input id="siPwd" class="si-select" type="password" placeholder="${esc(t('siPwd'))}" autocomplete="new-password" style="min-width:160px">
+          <button id="siLogin" class="btn-like primary">${esc(t('siLogin'))}</button>
+        </div>
+        <div class="si-hint">${esc(t('siLoginHint'))}</div>
+      </div>
       <div class="si-row">
         <button id="siOpenSeller" class="btn-like">${esc(t('siOpenSeller'))}</button>
         <span class="si-hint">${esc(t('siOpenSellerHint'))}</span>
@@ -53,6 +61,33 @@
       if (r.error) return status(r.error, 'err');
       status(t('siParsed', { n: r.count, range: r.dateRange || '-' }), 'ok');
       refresh();
+    });
+
+    $('#siLogin').addEventListener('click', async () => {
+      const account = $('#siAcc').value.trim();
+      const password = $('#siPwd').value;
+      if (!account || !password) return status(t('siNeedAccPwd'), 'err');
+      status(t('siLoggingIn'));
+      $('#siLogin').disabled = true;
+      try {
+        const r = await fetch('/api/seller-import/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account, password }),
+        }).then((x) => x.json());
+        if (r.error) throw new Error(r.error);
+        if (r.needManual) {
+          // 出验证码：已经自动切回有头窗口，用户只处理验证
+          status(t('siNeedManual', { reason: r.reason || '' }) + (r.note ? ' · ' + r.note : ''), 'err');
+        } else {
+          status(t('siLoginOk'), 'ok');
+          $('#siPwd').value = '';
+        }
+      } catch (e) {
+        status(e.message, 'err');
+      } finally {
+        $('#siLogin').disabled = false;
+      }
     });
 
     $('#siOpenSeller').addEventListener('click', async () => {
