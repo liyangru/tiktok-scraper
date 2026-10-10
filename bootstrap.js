@@ -92,8 +92,7 @@ log('内置浏览器:', process.env.CHROME_PATH || process.env.PLAYWRIGHT_BROWSE
 
 // exe 启动时：将内嵌模块包预装到用户本地数据目录。先预装再 require server，
 // 否则 loadEnabled 看不到模块；源码运行（node server.js）不走此流程。
-async function preloadBundledModules() {
-  if (!isPkg) return;
+async function preloadBundledModules() {  if (!isPkg) return;
   const snapDir = path.join(__dirname, 'modules-dist'); // pkg assets 虚拟快照
   if (!fs.existsSync(snapDir)) {
     log('未找到内置模块包:', snapDir);
@@ -128,15 +127,59 @@ async function preloadBundledModules() {
   }
 }
 
-// 启动服务（server.js 会读取 TT_BASE_DIR / PLAYWRIGHT_BROWSERS_PATH）。
-// 必须等模块预装完成再 require server.js，让启动时 loadEnabled 能发现这些模块。
+// 启动流程：先起「加载页」占住端口 → 预装/解压每一步更新进度 → 主服务就绪后
+// splash 关闭、主服务在同一端口接管，浏览器页面自动跳进主界面；失败则页面显示原因。
 (async () => {
+  let PORT = parseInt(process.env.PORT || "8899", 10);
+  let splash = null;
   try {
+    const { createSplash } = require('./lib/splash');
+    splash = await createSplash(PORT);
+    PORT = splash.port; // 目标端口被占时 splash 会顺延，后续全部用它
+    // 尽早打开窗口显示加载页（spawn 自带 Chromium 的 --app 模式，静默失败无妨）
+    try {
+      const { spawn } = require('child_process');
+      const exe = process.env.CHROME_PATH || path.join(BASE_DIR, 'browsers', 'chromium-1248', 'chrome-win64', 'chrome.exe');
+      if (fs.existsSync(exe)) {
+        const profile = path.join(BASE_DIR, 'ui-profile');
+        fs.mkdirSync(profile, { recursive: true });
+        const child = spawn(exe, [
+          `--app=http://127.0.0.1:${PORT}/`,
+          `--user-data-dir=${profile}`,
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-features=ChromeForTestingBanner',
+          '--window-size=1440,960',
+        ], { detached: true, stdio: 'ignore' });
+        child.unref();
+      }
+    } catch (_) {}
+
+    splash.set('解压内置浏览器…');
+    if (isPkg) {
+      try {
+        ensureBrowsers(BASE_DIR, [path.join(__dirname, 'browser-payload.tar.gz')]);
+      } catch (e) {
+        throw new Error('解压 Chromium 失败: ' + (e && e.message));
+      }
+    }
+
+    splash.set('预装功能模块…');
     await preloadBundledModules();
-    const { start } = require('./server.js');
-    await start();
+
+    splash.set('启动主服务…');
+    process.env.NO_AUTO_OPEN = '1'; // 窗口已在加载页阶段打开，主服务别再开第二个
+    const { start } = await Promise.resolve(require('./server.js'));
+    const realPort = await start(PORT); // splash 已占住此端口，主服务直接接管
+    await splash.close(); // 主服务已在同一端口接管
+    log('就绪: http://127.0.0.1:' + realPort);
   } catch (e) {
-    console.error('启动失败:', e && e.stack ? e.stack : e.message);
-    process.exit(1);
+    const msg = e && e.stack ? e.stack : String(e && e.message);
+    console.error('启动失败:', msg);
+    if (splash) {
+      splash.fail(msg, LOG_FILE); // 加载页会显示原因与日志路径，进程保持存活让用户看到
+    } else {
+      process.exit(1);
+    }
   }
 })();

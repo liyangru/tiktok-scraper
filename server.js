@@ -524,7 +524,7 @@ const MODULE_CTX = {
 /** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */
 const LOADED_MODULES = modules.loadEnabled(app, MODULE_CTX, (m) => console.log(`  ⚠ 模块：${m}`));
 
-function listen(port, tries = 12) {
+function listen(port, tries = 30) {
   return new Promise((resolve, reject) => {
     const srv = app.listen(port, HOST);
     srv.on('listening', () => {
@@ -543,7 +543,10 @@ function listen(port, tries = 12) {
       resolve(port);
     });
     srv.on('error', (e) => {
-      if (e.code === 'EADDRINUSE' && tries > 0) {
+      // EACCES 也要换端口：Windows 上其它进程绑了 0.0.0.0:port 时，绑 127.0.0.1:port 会报
+      // EACCES（而非 EADDRINUSE）—— 用户机器上就发生过，导致「双击没反应」。
+      if ((e.code === 'EADDRINUSE' || e.code === 'EACCES') && tries > 0) {
+        console.log(`  ⚠ 端口 ${port} 不可用（${e.code}），尝试 ${port + 1}`);
         srv.close();
         listen(port + 1, tries - 1).then(resolve, reject);
       } else {
