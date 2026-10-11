@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-11T11:09:23.894Z",
+  "generatedAt": "2026-10-11T11:02:04.230Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -11,7 +11,7 @@
       "requires": [],
       "size": 6209,
       "sha256": "47ca4fee644238efe608d17e774e0c6d1fe333130d03af11cd70590f68ef4b16",
-      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/ai-analyst-1.0.0.tar.gz"
+      "url": "https://raw.githubusercontent.com/liyangru/tiktok-scraper/master/modules/ai-analyst-1.0.0.tar.gz"
     },
     {
       "id": "brand-analytics",
@@ -22,7 +22,7 @@
       "requires": [],
       "size": 5634,
       "sha256": "ab516f71718d12b0b1e78251e562b171cc1f2001bb7aca6167bc121f3c0eb7ba",
-      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/brand-analytics-1.0.0.tar.gz"
+      "url": "https://raw.githubusercontent.com/liyangru/tiktok-scraper/master/modules/brand-analytics-1.0.0.tar.gz"
     },
     {
       "id": "seller-import",
@@ -33,7 +33,7 @@
       "requires": [],
       "size": 18701,
       "sha256": "1730fcc85516722da3fc0c09f164bcc703f97c9cae631328c4e9642766968be3",
-      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/seller-import-1.2.0.tar.gz"
+      "url": "https://raw.githubusercontent.com/liyangru/tiktok-scraper/master/modules/seller-import-1.2.0.tar.gz"
     },
     {
       "id": "tiktok-login",
@@ -44,7 +44,7 @@
       "requires": [],
       "size": 9529,
       "sha256": "81d752aaaf5ea4c4a29154a141d16ab5f885a9c306dd9414d4107073e26b9543",
-      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/tiktok-login-1.1.0.tar.gz"
+      "url": "https://raw.githubusercontent.com/liyangru/tiktok-scraper/master/modules/tiktok-login-1.1.0.tar.gz"
     }
   ]
 }
