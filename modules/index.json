@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-10-11T11:09:23.894Z",
+  "tag": "modules-v1",
+  "modules": [
+    {
+      "id": "ai-analyst",
+      "name": "AI 分析与复刻脚本",
+      "version": "1.0.0",
+      "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌级解读；选一条视频抽帧后由视觉模型生成复刻脚本（hook/分镜/文案/CTA/发布建议）。需要先在 .env 配置 LLM_BASE_URL / LLM_API_KEY。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 6209,
+      "sha256": "47ca4fee644238efe608d17e774e0c6d1fe333130d03af11cd70590f68ef4b16",
+      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/ai-analyst-1.0.0.tar.gz"
+    },
+    {
+      "id": "brand-analytics",
+      "name": "品牌媒体分析",
+      "version": "1.0.0",
+      "description": "把多个账号归到同一品牌下看整体：品牌总粉丝/总播放/总互动、账号贡献对比（谁贡献最多）、月度趋势、品牌 TOP 视频榜，以及互动率、平均时长等媒体运营指标。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 5634,
+      "sha256": "ab516f71718d12b0b1e78251e562b171cc1f2001bb7aca6167bc121f3c0eb7ba",
+      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/brand-analytics-1.0.0.tar.gz"
+    },
+    {
+      "id": "seller-import",
+      "name": "卖家数据导入",
+      "version": "1.2.0",
+      "description": "卖家中心数据导入与挂车分析。主页提供「手动导入」（上传卖家中心导出的 xlsx）与「自动导入」（打开卖家中心窗口自动接导入库）两条路；登录入口在设置页。登录后抓取时会自动把 GMV / 订单 / 商品点击 / GPM / 完播率等商家指标合并进视频列表（匹配键 = 视频ID，卖家中心独有的广告/混剪自动剔除）。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 18701,
+      "sha256": "1730fcc85516722da3fc0c09f164bcc703f97c9cae631328c4e9642766968be3",
+      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/seller-import-1.2.0.tar.gz"
+    },
+    {
+      "id": "tiktok-login",
+      "name": "创作中心数据导入",
+      "version": "1.1.0",
+      "description": "登录 TikTok 账号（扫码优先，可切账密/邮箱）。首次登录用有头窗口，保存登录态后全程无头自动登录，失败才再弹窗。登录后抓取时自动同步创作中心数据（平均观看时长/完播率/流量来源等），与 TikTok 抓取结果合并展示，重合字段以抓取为准。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 9529,
+      "sha256": "81d752aaaf5ea4c4a29154a141d16ab5f885a9c306dd9414d4107073e26b9543",
+      "url": "D:/XIAZAI/浏览器/TIKTOK视频分析/tiktok-scraper/modules-dist/tiktok-login-1.1.0.tar.gz"
+    }
+  ]
+}
