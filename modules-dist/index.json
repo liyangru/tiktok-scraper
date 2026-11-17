@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T00:38:03.359Z",
+  "generatedAt": "2026-11-17T00:46:57.269Z",
   "tag": "modules-v1",
   "modules": [
     {
@@ -9,8 +9,8 @@
       "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌/账号级解读。需先在设置里配置大模型接口。",
       "author": "liyangru",
       "requires": [],
-      "size": 4301,
-      "sha256": "b3058e36472c40a6fb54d9c19d64325a2d0730b0040ea217b54a00ea6ec08178",
+      "size": 4311,
+      "sha256": "f575404dc4e8301c60b4ca594797ee3d687c08d698e0f2f1830a60eb34097845",
       "url": "ai-analyst-1.2.0.tar.gz"
     }
   ]
