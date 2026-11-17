@@ -47,3 +47,6 @@ crash.log
 
 # 界面窗口的浏览器 profile（运行产物）
 ui-profile/
+
+apps/
+
