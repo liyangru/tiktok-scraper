@@ -22,7 +22,8 @@ const BASE_DIR = process.env.TT_BASE_DIR || __dirname;
 envfile.load(path.join(BASE_DIR, '.env'));
 
 const settings = require('./lib/settings');
-const modules = require('./lib/modules');
+const TTPeriod = require('./public/shared/period.js');
+const TTMetrics = require('./public/shared/metrics.js');
 const videodb = require('./lib/videodb');
 const llm = require('./lib/llm');
 const videodl = require('./lib/videodl');
@@ -120,23 +121,6 @@ app.use(
   })
 );
 
-// 已安装模块的前端资源 → /modules/<id>/…
-// ⚠️ app.use('/modules') 会把挂载前缀从 req.url 里剥掉，所以 req.url 已是 /<id>/…；
-//    还要再把 <id> 这一段剥掉，才能映射到 <模块>/public/xxx —— 不剥就 404。
-app.use('/modules', (req, res, next) => {
-  const seg = String(req.url).split('/').filter(Boolean);
-  const id = seg[0];
-  if (!id) return next();
-  const dir = modules.publicDirOf(id);
-  if (!dir) return res.status(404).end();
-  req.url = '/' + seg.slice(1).join('/');
-  express.static(dir, {
-    etag: false,
-    lastModified: false,
-    setHeaders: (r2) => r2.setHeader('Cache-Control', 'no-store, must-revalidate'),
-  })(req, res, next);
-});
-
 /* ================= 设置 ================= */
 
 app.get('/api/settings', (req, res) => {
@@ -182,114 +166,32 @@ app.post('/api/settings', (req, res) => {
   res.json({ ok: true, core: settings.getCore() });
 });
 
-/* ================= 模块 ================= */
-
-app.get('/api/modules', async (req, res) => {
-  const installed = modules.installedMap();
-  let index = [];
-  let indexError = '';
-  try {
-    index = await modules.fetchIndex();
-  } catch (e) {
-    indexError = e.message;
-  }
-  const list = index.map((m) => ({
-    ...m,
-    installed: !!installed[m.id],
-    installedVersion: installed[m.id] ? installed[m.id].version : '',
-    enabled: !!installed[m.id] && settings.isEnabled(m.id),
-    updateAvailable: !!(installed[m.id] && m.version && installed[m.id].version !== m.version),
-  }));
-  // 已装但索引里没有的（本地开发的模块）也列出来
-  for (const [id, man] of Object.entries(installed)) {
-    if (!list.some((x) => x.id === id)) {
-      list.push({ ...man, installed: true, installedVersion: man.version, enabled: settings.isEnabled(id), local: true });
-    }
-  }
-  // 装过又被删掉的：仍然列出来，带「下载」按钮 —— 用户要求删除后不能从设置里消失
-  for (const [id, meta] of Object.entries(settings.knownModules())) {
-    if (list.some((x) => x.id === id)) continue;
-    list.push({
-      id,
-      name: meta.name || id,
-      version: meta.version || '',
-      description: meta.description || '',
-      requires: [],
-      installed: false,
-      installedVersion: '',
-      enabled: false,
-      updateAvailable: false,
-      deleted: true,
-    });
-  }
-  res.json({ indexError, modules: list, dir: modules.MODULES_DIR, indexUrl: modules.resolveIndexUrl() });
-});
-
-/** 下载安装进度（前端在 POST install 飞行期间轮询） */
-app.get('/api/modules/:id/install-progress', (req, res) => {
-  res.json(modules.getProgress(req.params.id) || { stage: 'idle', pct: 0 });
-});
-
-app.post('/api/modules/:id/install', async (req, res) => {
-  const id = req.params.id;
-  try {
-    const index = await modules.fetchIndex();
-    const entry = index.find((m) => m.id === id);
-    if (!entry) return res.status(404).json({ error: `索引里没有模块 ${id}` });
-    const man = await modules.install(entry);
-    // 下载即启用（含依赖级联）—— 用户要求「下载了就可以重启出现在应用里」
-    const en = modules.enableWithDeps(id);
-    res.json({
-      ok: true,
-      module: man,
-      enabled: en.enabled,
-      missingDeps: en.missing,
-      restartRequired: true,
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.delete('/api/modules/:id', (req, res) => {
-  const id = req.params.id;
-  if (settings.isEnabled(id)) {
-    const r = modules.disableSafely(id);
-    if (!r.ok) return res.status(409).json({ error: `被这些已启用模块依赖，无法卸载：${r.blockedBy.join(', ')}` });
-  }
-  const ok = modules.uninstall(id);
-  res.json({ ok, restartRequired: true });
-});
-
-app.post('/api/modules/:id/toggle', (req, res) => {
-  const id = req.params.id;
-  const want = !!(req.body && req.body.enabled);
-  if (want) {
-    const r = modules.enableWithDeps(id);
-    if (r.missing.length) {
-      return res.status(409).json({ error: `缺少依赖模块：${r.missing.join(', ')}`, enabled: r.enabled });
-    }
-    return res.json({ ok: true, enabled: r.enabled, restartRequired: true });
-  }
-  const r = modules.disableSafely(id);
-  if (!r.ok) return res.status(409).json({ error: `这些已启用模块依赖它，请先停用它们：${r.blockedBy.join(', ')}` });
-  res.json({ ok: true, enabled: [], restartRequired: true });
-});
-
 /* ================= 核心 ================= */
 
 /** 内存中的任务表 */
 const jobs = new Map();
 
+/** 运行期才有的字段（AbortController 等）不落盘 */
+const RUNTIME_KEYS = new Set(['abort']);
 function saveJob(job) {
   const p = path.join(DATA_DIR, `${job.id}.json`);
-  fs.writeFileSync(p, JSON.stringify(job));
+  fs.writeFileSync(p, JSON.stringify(job, (k, v) => (RUNTIME_KEYS.has(k) ? undefined : v)));
 }
 function loadJobsFromDisk() {
   for (const f of fs.readdirSync(DATA_DIR)) {
     if (!f.endsWith('.json')) continue;
     try {
       const j = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8'));
+      // 上次退出时还在跑的任务不可能继续了：明确标成「已中断」，否则前端会一直显示加载中
+      if (j.status === 'running' || j.status === 'queued' || j.status === 'stopping') {
+        j.status = 'interrupted';
+        j.error = j.error || '应用在任务进行中退出，任务已中断';
+        j.finishedAt = j.finishedAt || new Date().toISOString();
+        for (const a of j.accounts || []) {
+          if (a.state === 'running' || a.state === 'retrying' || a.state === 'queued') a.state = 'stopped';
+        }
+        try { saveJob(j); } catch (_) {}
+      }
       jobs.set(j.id, j);
     } catch (e) {}
   }
@@ -308,9 +210,7 @@ function cleanHandle(s) {
     .trim();
 }
 
-function todayBangkok() {
-  return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
-}
+const todayBangkok = () => TTPeriod.today();
 
 /** 健康检查 */
 const APP_VERSION = require('./package.json').version;
@@ -445,16 +345,14 @@ app.get('/api/videodb/stats', (req, res) => res.json(videodb.stats()));
 
 app.get('/api/videos/:vid', (req, res) => {
   const v = videodb.load().videos[String(req.params.vid)];
-  if (!v) return res.status(404).json({ error: 'not found' });
+  // 还没有历史快照不是错误：返回空历史，前端显示「暂无快照」
+  if (!v) return res.json({ vid: String(req.params.vid), found: false, history: [] });
   res.json(v);
 });
 
 /* ==================== 应用自更新（发布后由应用自己拉，不再手动装） ====================
-   两条更新通道，别再混着走：
-     ① **模块**（tiktok-login / seller-import / seller-api…）—— 启动时自动比对索引并升级，
-        改模块不需要装应用。绝大多数修复都落在这一层。
-     ② **应用本体**（asar 里的 server.js / public/*）—— 必须先发版，再由这里检查更新，
-        拿到安装包后一键静默安装。
+   应用是一个整体（2.1 起不再有可单独升级的模块），更新只有一条通道：
+   先发版，再由这里检查更新，拿到安装包后一键静默安装。
    ⚠️ 仓库是私有的，GitHub API 要带 token（.env 的 UPDATE_TOKEN）；没有 token 就只报当前版本。 */
 const UPDATE_REPO = process.env.UPDATE_REPO || 'liyangru/tiktok-scraper';
 const UPDATE_FILE = path.join(BASE_DIR, 'data', 'update.json');
@@ -582,7 +480,6 @@ app.get('/api/health', (req, res) => {
     headless: process.env.BROWSER_HEADLESS === '1',
     version: APP_VERSION,
     build: BUILD_STAMP,
-    autoUpgraded: AUTO_UPGRADED,
   });
 });
 
@@ -602,32 +499,37 @@ app.post('/api/scrape', async (req, res) => {
     return res.status(500).json({ error: '没找到 Chrome/Chromium，请设置环境变量 CHROME_PATH 指向浏览器可执行文件' });
   }
 
-  let to = body.to || todayBangkok();
-  // ⚠️ 本期边界必须在下面被扩写成并集之前就定下来，否则期次信息永久丢失
-  const currentFrom = body.from || to.slice(0, 8) + '01'; // 空 = 当月 1 号
-  const currentTo = to;
-  // 对比期：抓取范围扩成「本期 ∪ 对比期」，出结果后再按期切分对比
-  const cmpFrom = body.compareFrom || '';
-  const cmpTo = body.compareTo || '';
-  const hasCompare = !!(cmpFrom && cmpTo);
-  let from2 = currentFrom;
-  if (hasCompare) {
-    if (cmpFrom < from2) from2 = cmpFrom;
-    if (cmpTo > to) to = cmpTo;
+  /* ---------- 本期 ----------
+     起止日期一律按曼谷日历处理（TTPeriod 只做纯日历运算，不经过本机时区）。 */
+  const today = todayBangkok();
+  const currentTo = body.to || today;
+  const currentFrom = body.from || TTPeriod.monthStart(currentTo); // 空 = 当月 1 号
+  if (!TTPeriod.isValid(currentFrom) || !TTPeriod.isValid(currentTo)) {
+    return res.status(400).json({ error: `日期格式不对：${currentFrom} ~ ${currentTo}` });
   }
-  const from = from2;
+  if (currentFrom > currentTo) return res.status(400).json({ error: '起始日期不能晚于结束日期' });
+  if (currentTo > today) return res.status(400).json({ error: `结束日期不能晚于今天（${today}）` });
 
-  // 两期重叠 → 同一批视频会同时落进两期，算出来的 delta 一定是错的。
-  // 前端弹窗（cmpOk）已经拦了一道，这里再兜一层：API 可以被别的调用方直接打。
-  if (hasCompare) {
-    const ovFrom = cmpFrom > currentFrom ? cmpFrom : currentFrom;
-    const ovTo = cmpTo < currentTo ? cmpTo : currentTo;
-    if (ovFrom <= ovTo) {
-      return res.status(400).json({
-        error: `对比期与本期有重叠（${ovFrom} ~ ${ovTo}），同一批视频会同时算进两期，对比结果不可用。请把对比期改到本期之前。`,
-      });
+  /* ---------- 对比期 ----------
+     与前端同一份 TTPeriod.compareRange()：界面上显示的对比区间就是这里真正去抓的区间。
+     兼容旧调用方：只传了 compareFrom/compareTo 没传模式 → 视为自定义。 */
+  let compareMode = String(body.compareMode || '');
+  if (!compareMode) compareMode = body.compareFrom && body.compareTo ? 'custom' : 'none';
+  if (!TTPeriod.COMPARE_MODES.includes(compareMode)) return res.status(400).json({ error: `未知的对比方式：${compareMode}` });
+  let cmp = null;
+  if (compareMode !== 'none') {
+    cmp = TTPeriod.compareRange(compareMode, currentFrom, currentTo, { from: body.compareFrom, to: body.compareTo });
+    if (!cmp) {
+      if (TTPeriod.isAll(currentFrom)) compareMode = 'none'; // 「全部」没有上一期可比，静默按不对比处理
+      else return res.status(400).json({ error: '对比区间无效：请检查自定义对比的起止日期' });
     }
   }
+  /* 两期重叠是允许的（例如本期 14 天选「上周同期」）：重叠日期内的视频同时计入两期、各自统计。
+     界面会明确提示重叠天数，不再像旧版那样直接拒绝。 */
+
+  // 抓取范围 = 本期 ∪ 对比期，出结果后再按期切分
+  const from = cmp && cmp.from < currentFrom ? cmp.from : currentFrom;
+  const to = cmp && cmp.to > currentTo ? cmp.to : currentTo;
 
   const job = {
     id: newId(),
@@ -639,84 +541,155 @@ app.post('/api/scrape', async (req, res) => {
     /* 期次边界：job 重开后要靠这两个区间把结果拆回「本期 vs 对比期」 */
     currentFrom,
     currentTo,
-    compareFrom: hasCompare ? cmpFrom : null,
-    compareTo: hasCompare ? cmpTo : null,
-    concurrency: Math.max(1, Math.min(parseInt(body.concurrency, 10) || CONCURRENCY, 3)),
+    compareFrom: cmp ? cmp.from : null,
+    compareTo: cmp ? cmp.to : null,
+    compareMode: cmp ? compareMode : 'none',
+    compareInfo: cmp
+      ? { shiftedWeek: cmp.shiftedWeek, fullMonth: cmp.fullMonth, clamped: cmp.clamped, overlapDays: cmp.overlapDays, sameSpan: cmp.sameSpan }
+      : null,
+    // 抓取并发固定为 1（实测并发会显著提高失败率）
+    concurrency: 1,
+    stage: 'init',
+    startedAt: null,
     events: [],
-    accounts: [],
+    accounts: handles.map((h) => ({ handle: h, state: 'queued', stage: '', found: 0, count: 0, attempt: 0, error: '' })),
     error: null,
     finishedAt: null,
   };
   jobs.set(job.id, job);
   saveJob(job);
-  res.json({ id: job.id, from, to, handles, concurrency: job.concurrency });
+  res.json({
+    id: job.id,
+    from,
+    to,
+    handles,
+    currentFrom,
+    currentTo,
+    compareFrom: job.compareFrom,
+    compareTo: job.compareTo,
+    compareMode: job.compareMode,
+  });
 
   runJob(job).catch((e) => {
     job.status = 'error';
+    job.stage = 'error';
     job.error = e.message || String(e);
     job.finishedAt = new Date().toISOString();
+    for (const a of job.accounts) if (a.state === 'running' || a.state === 'retrying' || a.state === 'queued') a.state = 'failed';
     saveJob(job);
   });
 });
 
+/**
+ * 执行抓取任务。
+ * job.stage / job.accounts[].stage 只在真实执行到对应步骤时更新（来自 scraper 的 stage 事件），
+ * 前端据此显示「正在启动浏览器 / 打开主页 / 滚动加载…」，不做任何凭空推算的进度。
+ */
 async function runJob(job) {
   job.status = 'running';
+  job.startedAt = new Date().toISOString();
+  job.abort = new AbortController();
   saveJob(job);
 
+  const acc = (h) => job.accounts.find((x) => x.handle === h);
+  /** 浏览器引擎的原始报错带终端颜色码和整段调用日志，只保留给人看的第一句 */
+  const cleanErr = (m) =>
+    String(m || '')
+      .replace(/\u001b\[[0-9;]*m/g, '')
+      .split(/\n|Call log:/)[0]
+      .replace(/^page\.goto:\s*/, '')
+      .replace(/net::ERR_[A-Z_]+/, (x) => `网络连接失败（${x}）`)
+      .trim()
+      .slice(0, 200);
   const push = (ev) => {
+    if (ev.reason) ev.reason = cleanErr(ev.reason);
+    if (ev.error) ev.error = cleanErr(ev.error);
     job.events.push({ t: Date.now(), ...ev });
     if (job.events.length > 500) job.events.splice(0, job.events.length - 500);
-    // 记录每账号状态
-    if (ev.type === 'account-start') {
-      let a = job.accounts.find((x) => x.handle === ev.handle);
-      if (!a) {
-        a = { handle: ev.handle, state: 'running', found: 0, count: 0 };
-        job.accounts.push(a);
-      }
-      a.state = 'running';
-      a.attempt = ev.attempt || 1;
-    } else if (ev.type === 'account-retry') {
-      const a = job.accounts.find((x) => x.handle === ev.handle);
-      if (a) {
-        a.state = 'retrying';
-        a.attempt = (ev.attempt || 1) + 1;
-      }
-    } else if (ev.type === 'account-progress') {
-      const a = job.accounts.find((x) => x.handle === ev.handle);
-      if (a) a.found = ev.found;
-    } else if (ev.type === 'account-done') {
-      const a = job.accounts.find((x) => x.handle === ev.handle);
-      if (a) {
-        a.state = 'done';
-        a.count = ev.count;
-        a.stats = ev.stats;
-      }
+    const a = ev.handle ? acc(ev.handle) : null;
+    switch (ev.type) {
+      case 'stage':
+        if (a) a.stage = ev.stage;
+        job.stage = ev.stage;
+        if (job.status === 'stopping') job.stage = 'stopping';
+        break;
+      case 'account-start':
+        if (a) {
+          a.state = 'running';
+          a.attempt = ev.attempt || 1;
+          a.error = '';
+        }
+        job.current = ev.handle;
+        break;
+      case 'account-retry':
+        if (a) {
+          a.state = 'retrying';
+          a.attempt = (ev.attempt || 1) + 1;
+          a.error = ev.reason || '';
+        }
+        break;
+      case 'account-progress':
+        if (a && typeof ev.found === 'number') a.found = ev.found;
+        break;
+      case 'account-error':
+        if (a) {
+          a.state = 'failed';
+          a.error = ev.error || '';
+        }
+        break;
+      case 'account-done':
+        if (a) {
+          a.state = ev.error ? 'failed' : 'done';
+          a.stage = ev.error ? a.stage : 'done';
+          a.count = ev.count;
+          a.stats = ev.stats;
+          a.complete = ev.complete !== false;
+          if (ev.error) a.error = ev.error;
+        }
+        break;
+      case 'account-stopped':
+        if (a && a.state !== 'done' && a.state !== 'failed') a.state = 'stopped';
+        break;
     }
   };
 
-  const results = await scraper.scrapeMany(job.handles, {
-    from: job.from,
-    to: job.to,
-    concurrency: job.concurrency,
-    maxScrolls: MAX_SCROLLS,
-    onEvent: push,
-  });
-
-  for (const h of job.handles) {
-    const a = job.accounts.find((x) => x.handle === h);
-    if (a && a.state === 'running') a.state = 'failed';
+  // 抓取期间每 3 秒落一次盘：应用意外退出后，历史里至少能看到进行到哪一步
+  const saver = setInterval(() => {
+    try { saveJob(job); } catch (_) {}
+  }, 3000);
+  let results;
+  try {
+    results = await scraper.scrapeMany(job.handles, {
+      from: job.from,
+      to: job.to,
+      concurrency: job.concurrency,
+      maxScrolls: MAX_SCROLLS,
+      onEvent: push,
+      signal: job.abort.signal,
+    });
+  } finally {
+    clearInterval(saver);
   }
 
+  const stopped = !!results.aborted || job.abort.signal.aborted;
+  for (const a of job.accounts) {
+    if (a.state === 'running' || a.state === 'retrying' || a.state === 'queued') a.state = stopped ? 'stopped' : 'failed';
+  }
+
+  push({ type: 'stage', stage: 'save' });
   job.results = results.map((r) => ({
     handle: r.handle,
     nickname: r.nickname,
     stats: r.stats,
     items: r.items,
+    complete: r.complete !== false && !r.error,
+    oldestDate: r.oldestDate || null,
+    error: cleanErr(r.error),
   }));
   job.rowCount = report.toRows(job.results).length;
-  job.status = 'done';
-  job.finishedAt = new Date().toISOString();
   saveJob(job);
+
+  push({ type: 'stage', stage: 'stats' });
   // 沉淀进视频数据库（按 vid 去重 + 指标历史），供 AI 分析与趋势使用
   try {
     const ing = videodb.ingest(job);
@@ -724,7 +697,27 @@ async function runJob(job) {
   } catch (e) {
     console.log(`  ⚠ 视频库写入失败：${e.message}`);
   }
+
+  job.status = stopped ? 'stopped' : 'done';
+  job.stage = stopped ? 'stopped' : 'done';
+  job.finishedAt = new Date().toISOString();
+  delete job.abort;
+  saveJob(job);
 }
+
+/** 停止任务：真正中断后台抓取（关闭浏览器），已完成账号的数据保留 */
+app.post('/api/jobs/:id/stop', (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: '任务不存在' });
+  if (job.status !== 'running' && job.status !== 'queued') {
+    return res.json({ ok: true, status: job.status, already: true });
+  }
+  job.status = 'stopping';
+  job.stage = 'stopping';
+  if (job.abort) job.abort.abort();
+  saveJob(job);
+  res.json({ ok: true, status: job.status });
+});
 
 /** 删除任务（单条） */
 app.delete('/api/jobs/:id', (req, res) => {
@@ -768,16 +761,31 @@ function jobRanges(job) {
   };
 }
 
+/** 每个账号真正加载到了多早的数据：对比期早于这个日期的部分属于「数据不足」 */
+function jobCoverage(job) {
+  return (job.results || []).map((r) => ({
+    handle: r.handle,
+    complete: r.complete !== false,
+    // 完整加载 = 覆盖整个抓取区间；否则只覆盖到最早加载到的那天
+    from: r.complete === false ? r.oldestDate || job.to : job.from,
+    to: job.to,
+    error: r.error || '',
+  }));
+}
+
 app.get('/api/jobs/:id', async (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: '任务不存在' });
   const ranges = jobRanges(job);
-  const rows = job.results ? report.toRows(job.results, ranges) : [];
+  const finished = !!job.results && !['running', 'queued', 'stopping'].includes(job.status);
+  // 进行中只回进度（不带明细，轮询要轻）；结束后才算行与对比
+  const rows = finished ? report.toRows(job.results, ranges) : [];
   // 创作中心 / 卖家中心已登录 → 自动把两边平台数据合并进行（无需手动导入）
-  await applySync(rows, ranges, job);
+  if (finished) await applySync(rows, ranges, job);
   res.json({
     id: job.id,
     status: job.status,
+    stage: job.stage || '',
     error: job.error,
     from: job.from,
     to: job.to,
@@ -785,16 +793,22 @@ app.get('/api/jobs/:id', async (req, res) => {
     currentTo: ranges.currentTo,
     compareFrom: ranges.compareFrom,
     compareTo: ranges.compareTo,
+    compareMode: job.compareMode || (ranges.compareFrom ? 'custom' : 'none'),
+    compareInfo: job.compareInfo || null,
     handles: job.handles,
+    current: job.current || '',
     createdAt: job.createdAt,
+    startedAt: job.startedAt || job.createdAt,
     finishedAt: job.finishedAt,
-    accounts: job.accounts,
+    now: new Date().toISOString(),
+    accounts: job.accounts || [],
     // 老 job / 手工造的数据可能没有 events，直接 slice 会把整个服务打崩
-    events: (job.events || []).slice(-60),
+    events: (job.events || []).slice(-80),
+    coverage: finished ? jobCoverage(job) : [],
     rows,
     periodCompare: rows.length ? report.periodCompare(rows, ranges) : null,
-    summary: job.results
-      ? job.results.map((r) => ({ handle: r.handle, nickname: r.nickname, stats: r.stats, ...report.agg(rows.filter((x) => x.account === r.handle)) }))
+    summary: finished
+      ? job.results.map((r) => ({ handle: r.handle, nickname: r.nickname, stats: r.stats, complete: r.complete !== false, error: r.error || '' }))
       : [],
   });
 });
@@ -816,7 +830,10 @@ app.get('/api/jobs', (req, res) => {
         currentTo: rg.currentTo,
         compareFrom: rg.compareFrom,
         compareTo: rg.compareTo,
+        compareMode: j.compareMode || (rg.compareFrom ? 'custom' : 'none'),
         createdAt: j.createdAt,
+        finishedAt: j.finishedAt || null,
+        error: j.error || '',
         rowCount: j.rowCount || 0,
       };
     });
@@ -865,11 +882,12 @@ app.get('/api/jobs/:id/export.csv', async (req, res) => {
   if (!job || !job.results) return res.status(404).send('任务不存在或尚未完成');
   const rows = report.toRows(job.results, jobRanges(job));
   await applySync(rows, jobRanges(job), job);
+  if (!rows.length) return res.status(404).send('该区间内没有数据');
   const lang = ['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh';
   const name = `tiktok_${job.handles.join('_').slice(0, 40)}_${job.from}_${job.to}_${lang}.csv`;
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-  res.send(report.buildCsv(rows, lang));
+  res.send(report.buildCsv(rows, lang, !!jobRanges(job).compareFrom));
 });
 
 /**
@@ -962,19 +980,26 @@ app.get('/api/jobs/:id/ai-brief', async (req, res) => {
   if (!rows.length) return res.status(400).json({ error: '该任务没有数据' });
   await applySync(rows, ranges, job); // 平台数据（GMV/完播率…）能合多少合多少
 
-  const pc = report.periodCompare(rows, ranges);
-  const top = [...rows].sort((a, b) => b.views - a.views).slice(0, 8);
-  const worst = [...rows].sort((a, b) => a.views - b.views).slice(0, 3);
-  const ecd = report.ecCompare(rows);
+  const hasCompare = !!(ranges.compareFrom && ranges.compareTo);
+  const cur = report.currentRows(rows);
+  const cmpRows = rows.filter((r) => TTMetrics.inCompare(r));
+  const pcCur = report.agg(cur);
+  const pcCmp = report.agg(cmpRows);
+  const top = [...cur].sort((a, b) => b.views - a.views).slice(0, 8);
+  const worst = [...cur].sort((a, b) => a.views - b.views).slice(0, 3);
+  const ecd = report.ecCompare(cur);
+  const curDays = TTPeriod.span(ranges.currentFrom, ranges.currentTo);
+  const cmpDays = hasCompare ? TTPeriod.span(ranges.compareFrom, ranges.compareTo) : 0;
 
   const lines = [];
   lines.push(`账号：${(job.results || []).map((a) => `@${a.handle}（粉丝 ${(a.stats && a.stats.followerCount) || '?'}）`).join('；')}`);
-  lines.push(`本期区间：${ranges.currentFrom} ~ ${ranges.currentTo}`);
-  lines.push(briefAggText('本期', pc.current));
-  if (pc.hasCompare) {
-    lines.push(`对比期区间：${ranges.compareFrom} ~ ${ranges.compareTo}`);
-    lines.push(briefAggText('对比期', pc.compare));
-    if (!pc.compare.n) lines.push('对比期没有发布视频（当期无内容可对比）');
+  lines.push(`本期区间：${ranges.currentFrom} ~ ${ranges.currentTo}（${curDays} 天）`);
+  lines.push(briefAggText('本期', pcCur));
+  if (hasCompare) {
+    lines.push(`对比期区间：${ranges.compareFrom} ~ ${ranges.compareTo}（${cmpDays} 天）`);
+    lines.push(briefAggText('对比期', pcCmp));
+    if (curDays !== cmpDays) lines.push('两期天数不同：比较时请以日均和条均为准，不要直接比总量');
+    if (!pcCmp.n) lines.push('对比期没有发布视频（当期无内容可对比）');
   } else {
     lines.push('未设置对比期');
   }
@@ -1013,7 +1038,7 @@ app.delete('/api/jobs/:id/ai-brief', (req, res) => {
 
 /* ================= 双平台数据同步框架（创作中心 / 卖家中心） ================= */
 /**
- * 模块通过 MODULE_CTX.registerSync({ platform, collect }) 注册同步源。
+ * 内置功能通过 FEATURE_CTX.registerSync({ platform, collect }) 注册同步源。
  * collect({ rows, ranges, job }) 返回 { <vid>: { 字段: 值, … } }（可以是 async）。
  * 核心在出报表时把这些字段**合并进右侧视频列表的行**：
  *   - 重合字段（播放/点赞等以 TikTok 抓取为准）一律剔除，绝不覆盖 —— 数据原则：TikTok 为主
@@ -1059,42 +1084,47 @@ async function applySync(rows, ranges, job) {
   return rows;
 }
 
-/* ================= 模块加载 ================= */
-
-/**
- * 模块能拿到的核心能力。
- * ⚠️ 模块在**主进程内**运行，不是沙箱 —— 所以只从本仓库安装模块。
+/* ================= 内置功能 =================
+ * 2.1 起取消「模块商店」：创作中心登录、卖家中心数据、开放平台、AI 单条解读都是应用的固定组成部分，
+ * 代码按功能拆在 lib/features/ 下，启动时直接挂载。单个功能挂载失败只记日志，不影响主程序。
  */
-const MODULE_CTX = {
+const FEATURE_CTX = {
   baseDir: BASE_DIR,
   dataDir: DATA_DIR,
   settings,
   envfile,
-  log: (m) => console.log(`  [module] ${m}`),
+  log: (m) => console.log(`  [feature] ${m}`),
   registerSync: (p) => {
     if (p && p.platform && typeof p.collect === 'function') SYNC_PROVIDERS.push(p);
   },
-  /* ⚠️ 模块能 require 的库只限这里给的 —— pkg 打包后模块在快照外，自己 require 不到核心依赖 */
   core: {
     scraper,
     report,
     exceljs: require('exceljs'),
     envfile,
-    chromium: require('patchright').chromium, // 套壳浏览器用（卖家中心登录）
+    chromium: require('patchright').chromium, // 套壳浏览器用（创作中心 / 卖家中心登录）
     llm,
     videodb,
   },
 };
 
-/** 视频解析与下载：**核心默认功能**（Round 6 起不再是模块），路由不变 */
+/** 视频解析与下载 */
 videodl.register(app, {
   core: { scraper },
   log: (m) => console.log(`  [videodl] ${m}`),
   getOutDir: resolveDownloadDir,
 });
 
-/** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */
-const LOADED_MODULES = modules.loadEnabled(app, MODULE_CTX, (m) => console.log(`  ⚠ 模块：${m}`));
+const FEATURES = ['creator-login', 'seller-center', 'seller-api', 'ai-video'];
+const LOADED_FEATURES = [];
+for (const name of FEATURES) {
+  try {
+    require(`./lib/features/${name}.js`).register(app, FEATURE_CTX);
+    LOADED_FEATURES.push(name);
+  } catch (e) {
+    logCrash(`feature ${name}`, e);
+  }
+}
 
 /**
  * ⚠️ /api/* 未命中任何路由时，express 默认回一页 HTML 404 ——
@@ -1145,11 +1175,11 @@ function listen(port, tries = 50) {
       console.log('');
       console.log('  TikTok 多账号数据抓取服务已启动');
       console.log(`  → http://${HOST}:${port}`);
-      console.log(`  浏览器: ${chrome || '未找到（请先安装模块或检查载荷）'}`);
+      console.log(`  浏览器: ${chrome || '未找到（请检查自带浏览器载荷）'}`);
       console.log(`  存储位置: ${resolveDownloadDir()}`);
       console.log(`  并发数: ${CONCURRENCY}   有头模式: ${process.env.BROWSER_HEADLESS === '1' ? '否' : '是'}`);
       console.log(`  访问口令: ${ACCESS_TOKEN ? '已启用' : '未启用（仅限本机使用）'}`);
-      console.log(`  模块: ${LOADED_MODULES.length ? LOADED_MODULES.join(', ') : '无（可在设置里下载）'}`);
+      console.log(`  内置功能: ${LOADED_FEATURES.join(', ')}`);
       console.log('');
       writeRuntime(port);
       /* ⚠️ 这里**不打开任何浏览器** —— 用户硬要求：所有界面只在应用窗口内。
@@ -1174,58 +1204,10 @@ function listen(port, tries = 50) {
 
 /** 启动服务，resolve 实际监听端口 */
 function start(portOverride) {
-  return listen(portOverride || PORT).then((port) => {
-    // 后台自动升级：exe 自带的模块源（resources/modules-dist）里有比本机已装更新的版本时，
-    // 静默重装（下载 → sha256 校验 → 原子替换）。用户「登录了没作用」的根因就是
-    // 本机模块停在旧版、新路由不存在，而要求用户手动去设置里点升级不现实。
-    autoUpgradeBuiltins();
-    return port;
-  });
+  return listen(portOverride || PORT);
 }
 
-/** 用内置模块源静默升级已装模块；失败只记日志，绝不影响启动与使用 */
-const AUTO_UPGRADED = [];
-async function autoUpgradeBuiltins() {
-  try {
-    const index = await modules.fetchIndex();
-    const installed = modules.installedMap();
-    const known = settings.load().known || {};
-    for (const entry of index) {
-      const cur = installed[entry.id];
-      /* ① 从没装过的新模块：静默装上并启用。
-         ⚠️ 这是「不要每次更新都走安装流程」的关键 ——
-            功能改动几乎都在模块层，模块能自己落地，用户就不必重装整个应用。
-            但「用户主动删过」的模块（settings.known 里有记录）绝不复活，否则删除就没意义了。 */
-      if (!cur) {
-        if (known[entry.id]) continue;
-        try {
-          console.log(`  [auto] 发现新模块 ${entry.id}@${entry.version}，静默安装`);
-          await modules.install(entry, (s) => console.log(`  [auto] ${entry.id} ${s}`));
-          const r = modules.enableWithDeps(entry.id);
-          AUTO_UPGRADED.push({ id: entry.id, from: '', to: entry.version, installed: true });
-          console.log(`  [auto] ${entry.id} 已安装并启用${r.missing.length ? '（缺依赖 ' + r.missing.join(',') + '）' : ''}`);
-        } catch (e) {
-          console.log(`  ⚠ [auto] ${entry.id} 安装失败：${e.message}`);
-        }
-        continue;
-      }
-      /* ② 已装的版本旧了：静默升级 */
-      if (!entry.version || cur.version === entry.version) continue;
-      try {
-        console.log(`  [upgrade] ${entry.id}: ${cur.version} → ${entry.version}（内置源自动升级）`);
-        await modules.install(entry, (s) => console.log(`  [upgrade] ${entry.id} ${s}`));
-        AUTO_UPGRADED.push({ id: entry.id, from: cur.version, to: entry.version });
-        console.log(`  [upgrade] ${entry.id} 完成，重启后新路由生效`);
-      } catch (e) {
-        console.log(`  ⚠ [upgrade] ${entry.id} 失败：${e.message}`);
-      }
-    }
-  } catch (e) {
-    console.log(`  ⚠ [upgrade] 内置模块源不可用：${e.message}`);
-  }
-}
-
-module.exports = { app, start, modules, settings };
+module.exports = { app, start, settings };
 
 if (require.main === module) {
   start().catch((e) => {

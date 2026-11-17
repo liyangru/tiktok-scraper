@@ -14,8 +14,8 @@
 # 说明：
 #   - 所有平台的浏览器（Chromium）都在 CI 里现下现打，并跑一遍 scripts/build-payload.js
 #     裁掉用不到的部分，所以仓库里不需要放大文件。
-#   - 模块包（modules-dist）随安装包一起分发，但**默认全部是「未安装」状态**：
-#     用户在设置里点「下载」才会真正安装，符合「按需装配」。
+#   - 应用是一个整体：创作中心登录 / 卖家中心数据 / 开放平台等能力全部内置，
+#     不再有需要单独下载安装的模块。
 
 name: release
 
@@ -43,16 +43,6 @@ jobs:
       - name: 安装依赖
         run: npm install --no-audit --no-fund
 
-      - name: 准备 ffmpeg（AI 复刻脚本抽帧用）
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p vendor
-          curl -L -o /tmp/ff.zip "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
-          7z x -y /tmp/ff.zip -o/tmp/ff >/dev/null
-          cp "$(find /tmp/ff -name ffmpeg.exe | head -1)" vendor/ffmpeg.exe
-          ls -lh vendor/ffmpeg.exe
-
       - name: 准备 Windows 版 Chromium 载荷（裁剪版）
         shell: bash
         run: |
@@ -68,9 +58,6 @@ jobs:
           node scripts/build-payload.js
           rm -f browser-payload.tar.gz.bak
           echo "裁剪后: $(du -sh browser-payload.tar.gz | cut -f1)"
-
-      - name: 打模块包（默认全部「未安装」，用户点下载才装）
-        run: node scripts/build-modules.js --local
 
       - name: 构建 Electron 便携版
         run: npx electron-builder --win portable --publish never
@@ -111,15 +98,6 @@ jobs:
       - name: 安装依赖
         run: npm install --no-audit --no-fund
 
-      - name: 准备 ffmpeg（AI 复刻脚本抽帧用）
-        run: |
-          set -euo pipefail
-          mkdir -p vendor
-          brew install ffmpeg 2>/dev/null || true
-          FFMPEG="$(command -v ffmpeg || true)"
-          if [ -n "$FFMPEG" ]; then cp "$FFMPEG" vendor/ffmpeg.exe; fi
-          ls -lh vendor/ffmpeg.exe 2>/dev/null || echo "ffmpeg 走 PATH 兜底"
-
       - name: 准备 macOS 版 Chromium 载荷
         run: |
           set -euo pipefail
@@ -130,9 +108,6 @@ jobs:
           # 直接用完整载荷（mac 上 build-payload.js 的源探测不可靠），不裁剪，保证构建成功
           tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
           echo "载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
-
-      - name: 打模块包
-        run: node scripts/build-modules.js --local
 
       - name: electron-builder 打包
         run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never -c.directories.output=release-mac
@@ -256,8 +231,7 @@ jobs:
             echo "| 本地 / 服务器 | \`tiktok-scraper-server-${VER}.tar.gz\` | 源码 + \`start.sh\`，需 Node 18+ |"
             echo ""
             echo "所有发行版都**自带浏览器**：不依赖系统 Chrome / Edge，不会打开系统默认浏览器，"
-            echo "运行时也不联网下载任何东西。功能以**模块**方式提供，默认全部未安装，"
-            echo "在「设置」里点「下载」即可装（装完重启应用生效）。"
+            echo "运行时也不联网下载任何东西。所有功能均已内置，安装即可用。"
             echo ""
             echo "### 首次运行"
             echo ""
