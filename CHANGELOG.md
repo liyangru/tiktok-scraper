@@ -26,6 +26,23 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-17
+
+### 新增
+- **独立 Claude 插件（`plugin/`）**：用 Claude 自带的浏览器采集，插件零依赖（约 200KB），不装浏览器、不装 npm 包、不用开应用
+  - `browser/collect.js`：在 tiktok.com 页面里开同源 iframe 加载账号主页，读取 TikTok 自己请求的视频列表（签名由 TikTok 完成，不伪造请求），自动滚动到起始日期之前
+  - 浏览器面板收起也能采集：iframe 内页面保持「可见」，动画帧 / 可见性观察改由定时器驱动
+  - 卡住自动处理：先上下滚动触发加载，再刷新页面续采（最多 3 次），已拿到的数据保留；游标前进也算进度（有的页 itemList 为空）
+  - 返回紧凑二维数组，省 token；每次调用最多 25 秒，可反复调用续跑
+  - MCP 工具：`prepare_scrape` / `submit_account` / `get_report` / `list_videos` / `export_report` / `list_scrapes`
+  - 零依赖 Excel 导出（`lib/xlsx-lite.js` + `lib/report-lite.js`）：汇总对比、账号、视频明细、挂车对比、发布时段
+  - `npm run build:plugin` 从源文件生成插件目录，测试会检查两边一致
+- 实测：@loopearplugs.th 2026-10-01~11-17 共 109 条，约 3 分钟；面板收起时两个账号近两周数据 1 分钟内完成
+
+### 变更
+- Claude Code 插件市场改为安装 `plugin/`（独立插件）；原来基于 Patchright 的 MCP 改称「完整版」，用于 Codex / 命令行（技能改名 `tiktok-analytics-local`）
+- 移除未验证的 `.codex-plugin` / `.agents` 清单与仓库根目录的 `.mcp.json`；Codex 统一用 `npm run agents codex`
+
 ## [2.2.0] - 2026-11-17
 
 ### 新增
