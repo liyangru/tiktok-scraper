@@ -38,7 +38,7 @@ const TOOLS = [
         compare: {
           type: 'string',
           enum: ['none', 'previous', 'lastWeek', 'lastMonth', 'custom'],
-          description: '对比期：不对比 / 上一周期（等长紧邻）/ 上周同期 / 上月同期（同日期）/ 自定义。默认不对比',
+          description: '对比期：none 不对比 / previous 上一周期（等长紧邻）/ lastWeek 上周（上一周的相同几天，只适用于 7 天以内的区间）/ lastMonth 上月同期（严格同日期，上月没有的日期取月末）/ custom 自定义。默认不对比',
         },
         compare_from: { type: 'string', description: 'compare=custom 时的对比开始日期' },
         compare_to: { type: 'string', description: 'compare=custom 时的对比结束日期' },

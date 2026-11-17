@@ -356,7 +356,15 @@ const TTApp = (() => {
   /** 打开历史任务：当前结果先保留，点中的那一行转圈，载入成功再切换（不闪白屏） */
   async function openJob(id, btn) {
     if (state.busy) return toast(t('busyNoSwitch'), 'warn');
-    const done = btnBusy(btn);
+    // 历史行：行内转圈 + 右侧结果区变淡并显示顶部加载条，不替换整行文字
+    if (btn) btn.classList.add('is-loading');
+    const res = $('#results');
+    const host = res && !res.hidden ? res : $('#emptyState');
+    if (host) host.classList.add('is-loading');
+    const done = () => {
+      if (btn) btn.classList.remove('is-loading');
+      if (host) host.classList.remove('is-loading');
+    };
     try {
       const j = await jget(`/api/jobs/${encodeURIComponent(id)}`);
       state.jobId = id;

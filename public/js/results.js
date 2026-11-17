@@ -415,7 +415,7 @@ const TTResults = (() => {
     if (info.shiftedWeek) notes.push(t('warnShiftedWeek', { n: pc.currentDays }));
     if (info.overlapDays) notes.push(t('warnOverlapResult', { n: info.overlapDays }));
     if (info.clamped) notes.push(t('warnClamped'));
-    if (info.fullMonth) notes.push(t('noteFullMonth'));
+    if (info.fullMonth) notes.push(t('noteFullMonth')); // 2.2 之前的历史任务
     if (!pc.sameSpan) notes.push(t('warnSpan', { a: pc.currentDays, b: pc.compareDays }));
     notes.push(t('pcSnapNote'));
 
@@ -445,7 +445,7 @@ const TTResults = (() => {
     });
   }
 
-  /* ---------------- AI 经营简报 ---------------- */
+  /* ---------------- AI 分析（概览） ---------------- */
   function renderAi() {
     const host = $('#aiSection');
     const jobId = state.jobId;

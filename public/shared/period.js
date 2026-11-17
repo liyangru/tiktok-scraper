@@ -160,15 +160,14 @@
   /**
    * 推算对比期。
    *   previous  上一周期：与本期同天数、紧邻本期之前
-   *   lastWeek  上周同期：整段向前平移 7 天
-   *   lastMonth 上月同期：起止各取上个月的同一日（没有那一天就取月末）；
-   *             本期恰好是完整自然月 → 对比上一个完整自然月
+   *   lastWeek  上周：上一周的相同几天（本期整体前移 7 天）。只适用于 7 天以内的区间，
+   *             超过 7 天两期会重叠、不再是「上一周」，返回 null（界面上该选项不可选）
+   *   lastMonth 上月同期：严格取上个月的相同日期；上个月没有这一天（如 3/30、3/31 对 2 月）
+   *             就取上个月最后一天
    *   custom    自定义：用 custom.from / custom.to
    *
    * 返回 null 表示不对比（mode=none、「全部」模式、或入参非法）；否则：
    *   { mode, from, to, days, currentDays, overlapDays, overlapFrom, overlapTo,
-   *     shiftedWeek   —— lastWeek 且本期超过 7 天：只是「平移一周」，不是完整自然周环比
-   *     fullMonth     —— lastMonth 且按完整自然月对齐
    *     clamped       —— lastMonth 且有日期被夹到了月末（如 3/31 → 2/28）
    *     sameSpan      —— 两期天数是否相同（不同则总量不能直接比，要看日均）}
    */
@@ -178,24 +177,19 @@
     if (isAll(from)) return null; // 「全部」没有可比的上一期
     const n = span(from, to);
     let cf, ct;
-    const flags = { shiftedWeek: false, fullMonth: false, clamped: false };
+    const flags = { clamped: false };
 
     if (mode === 'previous') {
       ct = addDays(from, -1);
       cf = addDays(ct, -(n - 1));
     } else if (mode === 'lastWeek') {
+      if (n > 7) return null;
       cf = addDays(from, -7);
       ct = addDays(to, -7);
-      flags.shiftedWeek = n > 7;
     } else if (mode === 'lastMonth') {
       cf = shiftMonth(from, -1);
-      if (isFullMonths(from, to)) {
-        ct = monthEnd(shiftMonth(monthStart(to), -1));
-        flags.fullMonth = true;
-      } else {
-        ct = shiftMonth(to, -1);
-        flags.clamped = parse(cf).d !== parse(from).d || parse(ct).d !== parse(to).d;
-      }
+      ct = shiftMonth(to, -1);
+      flags.clamped = parse(cf).d !== parse(from).d || parse(ct).d !== parse(to).d;
     } else if (mode === 'custom') {
       if (!custom || !isValid(custom.from) || !isValid(custom.to) || custom.from > custom.to) return null;
       cf = custom.from;
@@ -228,6 +222,6 @@
     ALL_FROM, PRESETS, COMPARE_MODES, TZ_OFFSET_MS,
     parse, isValid, daysInMonth, toDays, fromDays, addDays, span, today,
     weekStart, monthStart, monthEnd, isMonthEnd, shiftMonth, isFullMonths, overlap,
-    presetRange, matchPreset, isAll, normalizeRange, compareRange, classify,
+    presetRange, matchPreset, isAll, normalizeRange, compareRange, classify, WEEK_MAX_DAYS: 7,
   };
 });

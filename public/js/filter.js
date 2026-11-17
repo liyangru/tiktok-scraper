@@ -2,9 +2,10 @@
    数据筛选：起止日期 / 快捷日期 / 对比方式
 
    日期框交互：
-   - 整个日期框（文字、空白处、日历图标）都可以打开日期选择器：
-     原生日历按钮被拉伸覆盖整个输入框（CSS），再加上容器点击时调用 showPicker() 兜底；
-   - 键盘：Tab 聚焦后可直接键入日期，Enter / 空格 / Alt+↓ 打开选择器；
+   - 日期框是一个按钮：点日期文字、空白、图标都直接弹出日期选择器（input.showPicker）。
+     原生输入框藏在按钮下面只负责弹出选择器和保存值——不再出现「点到年/月/日分段只是选中文字、
+     只有点日历图标才弹出」的情况；
+   - 键盘：Tab 聚焦后 Enter / 空格 / ↓ 打开选择器；不支持 showPicker 的旧内核退回原生输入框；
    - 选完立即规整（倒置、超出今天、非法日期）并在下方给出反馈，对比区间同步重算。
    所有日期运算都走 TTPeriod（曼谷日历，不经过本机时区）。
    ============================================================ */
@@ -66,7 +67,21 @@ const TTFilter = (() => {
     sel.disabled = TTPeriod.isAll(f.from);
   }
 
+  let weekSwitched = false;
   function render() {
+    // 「上周」只适用于 7 天以内的区间；区间变长后自动改成「上一周期」并提示一次
+    const spanDays = TTPeriod.span(f.from, f.to);
+    if (f.mode === 'lastWeek' && spanDays > TTPeriod.WEEK_MAX_DAYS) {
+      f.mode = 'previous';
+      weekSwitched = true;
+      prefs.set('filter', { preset: f.preset, from: f.from, to: f.to, mode: f.mode, cmpFrom: f.cmpFrom, cmpTo: f.cmpTo });
+    }
+    const wkOpt = $('#cmpMode option[value="lastWeek"]');
+    if (wkOpt) {
+      const na = spanDays > TTPeriod.WEEK_MAX_DAYS;
+      wkOpt.disabled = na;
+      wkOpt.textContent = t(na ? 'cmpMode_lastWeekNa' : 'cmpMode_lastWeek');
+    }
     $('#from').value = f.from;
     $('#to').value = f.to;
     const max = today();
@@ -110,11 +125,9 @@ const TTFilter = (() => {
       const warns = [];
       const infos = [];
       if (c) {
-        if (c.shiftedWeek) warns.push(t('warnShiftedWeek', { n: c.currentDays }));
         if (c.overlapDays) warns.push(t('warnOverlap', { n: c.overlapDays }));
         if (c.clamped) infos.push(t('warnClamped'));
-        if (c.fullMonth) infos.push(t('noteFullMonth'));
-        if (!c.sameSpan && !c.fullMonth) infos.push(t('warnSpan', { a: c.currentDays, b: c.days }));
+        if (!c.sameSpan) infos.push(t('warnSpan', { a: c.currentDays, b: c.days }));
       }
       if (TTPeriod.isAll(f.from)) cnote.innerHTML = esc(t('cmpAllNa'));
       else if (f.mode === 'none') cnote.innerHTML = '';
@@ -123,9 +136,12 @@ const TTFilter = (() => {
         cnote.innerHTML =
           `<b>${esc(rangeText(c.from, c.to))}</b> ${esc(t('nDays', { n: c.days }))}` +
           (c.overlapDays ? ` <span class="badge warn">${esc(t('overlapN', { n: c.overlapDays }))}</span>` : '') +
-          tipHtml(warns.concat(infos).join('\n'), warns.length ? 'warn' : '');
+          tipHtml(warns.concat(infos).join('\n'), warns.length ? 'warn' : '') +
+          (weekSwitched ? `<span class="badge">${esc(t('cmpWeekSwitched'))}</span>` : '');
+      weekSwitched = false;
       cnote.hidden = !cnote.innerHTML;
     }
+    syncDateText();
   }
 
   /* ---------------- 修改 ---------------- */
@@ -197,31 +213,69 @@ const TTFilter = (() => {
     render();
   }
 
-  /* ---------------- 日期框：整块可点 ---------------- */
+  /* ---------------- 日期框：整块是按钮，点哪里都弹选择器 ---------------- */
+  const LOCALE = { zh: 'zh-CN', th: 'th-TH', en: 'en-GB' };
+  function dateLabel(v) {
+    if (!TTPeriod.isValid(v)) return '';
+    try {
+      const d = new Date(v + 'T00:00:00Z');
+      const wd = d.toLocaleDateString(LOCALE[window.currentLang] || 'zh-CN', { timeZone: 'UTC', weekday: 'short' });
+      return `${v.replace(/-/g, '/')}  ${wd}`;
+    } catch (_) {
+      return v;
+    }
+  }
+  /** 把输入框的值同步到按钮文字（程序改了 value 不会触发事件，render 末尾统一调用） */
+  function syncDateText() {
+    $$('.date-field').forEach((field) => {
+      const input = field.querySelector('input[type="date"]');
+      const txt = field.querySelector('.df-text');
+      if (input && txt) {
+        txt.textContent = dateLabel(input.value) || t('pickDate');
+        field.classList.toggle('empty', !input.value);
+        field.setAttribute('aria-label', `${input.title || ''} ${input.value || ''}`.trim());
+      }
+    });
+  }
+  const canPick = typeof HTMLInputElement !== 'undefined' && 'showPicker' in HTMLInputElement.prototype;
+
   function bindDateField(field) {
     const input = field.querySelector('input[type="date"]');
     if (!input) return;
+    if (!canPick) {
+      field.classList.add('native'); // 旧内核：直接用原生输入框
+      return;
+    }
+    input.tabIndex = -1;
+    input.setAttribute('aria-hidden', 'true');
+    const txt = document.createElement('span');
+    txt.className = 'df-text';
+    field.insertBefore(txt, input);
+    field.tabIndex = 0;
+    field.setAttribute('role', 'button');
     const open = () => {
       if (input.disabled) return;
       try {
-        if (typeof input.showPicker === 'function') input.showPicker();
-        else input.focus();
+        input.showPicker();
       } catch (_) {
-        // 某些环境（非用户手势、跨源 iframe）会拒绝 showPicker：退回聚焦，用户仍可键入或点图标
+        // 极少数环境拒绝（非用户手势）：退回原生输入框，至少可以键入
+        field.classList.add('native');
+        input.tabIndex = 0;
         input.focus();
       }
     };
-    // 点击输入框本身：原生日历按钮已被拉伸覆盖整个输入框（CSS）；这里再主动调一次 showPicker，
-    // 兼容覆盖层不生效的平台。选择器已经打开时 showPicker 会抛错，被 open() 内的 try 吞掉，不会重复弹出。
-    field.addEventListener('click', open);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ' || (e.altKey && e.key === 'ArrowDown')) {
+    field.addEventListener('click', (e) => {
+      if (e.target === input && field.classList.contains('native')) return;
+      open();
+    });
+    field.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
         e.preventDefault();
         open();
       }
     });
-    input.addEventListener('focus', () => field.classList.add('focus'));
-    input.addEventListener('blur', () => field.classList.remove('focus'));
+    input.addEventListener('change', syncDateText);
+    input.addEventListener('input', syncDateText);
   }
 
   function init() {
@@ -251,7 +305,7 @@ const TTFilter = (() => {
         f.preset = 'custom';
         render();
         const field = $('#from').closest('.date-field');
-        if (field) field.click();
+        if (field) field.click(); // 用户手势内，直接弹出开始日期选择器
         return;
       }
       applyPreset(b.dataset.preset);

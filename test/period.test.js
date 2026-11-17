@@ -49,33 +49,36 @@ test('上一周期：同天数、紧邻之前', () => {
   assert.deepEqual(cr('previous', '2027-01-01', '2027-01-10'), ['2026-12-22', '2026-12-31']);
 });
 
-test('上周同期：平移 7 天；超过 7 天要标记、且会重叠', () => {
+test('上周：上一周的相同几天；超过 7 天不适用', () => {
   const r = P.compareRange('lastWeek', '2026-11-10', '2026-11-16');
   assert.deepEqual([r.from, r.to], ['2026-11-03', '2026-11-09']);
-  assert.equal(r.shiftedWeek, false);
   assert.equal(r.overlapDays, 0);
-  const r2 = P.compareRange('lastWeek', '2026-11-01', '2026-11-14');
-  assert.deepEqual([r2.from, r2.to], ['2026-10-25', '2026-11-07']);
-  assert.equal(r2.shiftedWeek, true);
-  assert.equal(r2.overlapDays, 7);
+  // 本周（周一~今天）→ 上周一~上周同一天
+  assert.deepEqual(cr('lastWeek', '2026-11-16', '2026-11-17'), ['2026-11-09', '2026-11-10']);
+  // 上周（完整自然周）→ 再上一周
+  assert.deepEqual(cr('lastWeek', '2026-11-09', '2026-11-15'), ['2026-11-02', '2026-11-08']);
+  assert.equal(P.compareRange('lastWeek', '2026-11-01', '2026-11-14'), null);
 });
 
-test('上月同期：月末夹取 / 闰年 / 完整自然月 / 跨年', () => {
+test('上月同期：严格同日期 / 月末取最后一天 / 闰年 / 跨年', () => {
   assert.deepEqual(cr('lastMonth', '2026-11-01', '2026-11-17'), ['2026-10-01', '2026-10-17']);
   assert.deepEqual(cr('lastMonth', '2026-03-31', '2026-03-31'), ['2026-02-28', '2026-02-28']);
   assert.deepEqual(cr('lastMonth', '2024-03-31', '2024-03-31'), ['2024-02-29', '2024-02-29']);
   const c = P.compareRange('lastMonth', '2026-03-15', '2026-03-31');
   assert.deepEqual([c.from, c.to], ['2026-02-15', '2026-02-28']);
   assert.equal(c.clamped, true);
-  // 完整自然月 → 上一个完整自然月（不是 2/1~2/28 之外的日子）
+  // 严格同日期：3/1~3/31 → 2/1~2/28（2 月没有 29~31 日，取最后一天）
   const f = P.compareRange('lastMonth', '2026-03-01', '2026-03-31');
   assert.deepEqual([f.from, f.to], ['2026-02-01', '2026-02-28']);
-  assert.equal(f.fullMonth, true);
-  assert.deepEqual(cr('lastMonth', '2026-02-01', '2026-02-28'), ['2026-01-01', '2026-01-31']);
+  assert.equal(f.clamped, true);
+  // 11/1~11/30 → 10/1~10/30（同日期，不扩到 10/31）
+  assert.deepEqual(cr('lastMonth', '2026-11-01', '2026-11-30'), ['2026-10-01', '2026-10-30']);
+  assert.deepEqual(cr('lastMonth', '2026-02-01', '2026-02-28'), ['2026-01-01', '2026-01-28']);
   assert.deepEqual(cr('lastMonth', '2026-01-01', '2026-01-31'), ['2025-12-01', '2025-12-31']);
   assert.deepEqual(cr('lastMonth', '2026-01-10', '2026-01-20'), ['2025-12-10', '2025-12-20']);
   // 多个完整月
   assert.deepEqual(cr('lastMonth', '2026-04-01', '2026-05-31'), ['2026-03-01', '2026-04-30']);
+  assert.deepEqual(cr('lastMonth', '2026-05-01', '2026-05-31'), ['2026-04-01', '2026-04-30']);
 });
 
 test('不对比 / 全部 / 自定义 / 非法', () => {

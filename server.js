@@ -127,14 +127,6 @@ app.get('/api/settings', (req, res) => {
   const core = settings.getCore();
   res.json({
     core,
-    /* 密钥只回「是否已配置」，绝不回显明文 */
-    secrets: {
-      TTS_APP_KEY: envfile.has(settings.ENV_FILE, 'TTS_APP_KEY'),
-      TTS_APP_SECRET: envfile.has(settings.ENV_FILE, 'TTS_APP_SECRET'),
-      TTS_ACCESS_TOKEN: envfile.has(settings.ENV_FILE, 'TTS_ACCESS_TOKEN'),
-      TTM_APP_ID: envfile.has(settings.ENV_FILE, 'TTM_APP_ID'),
-      TTM_APP_SECRET: envfile.has(settings.ENV_FILE, 'TTM_APP_SECRET'),
-    },
     baseDir: BASE_DIR,
     envFile: settings.ENV_FILE,
   });
@@ -566,7 +558,7 @@ app.post('/api/jobs/:id/sync', async (req, res) => {
  * 设了对比期时必须结合对比期一起分析。LLM 配置复用 .env（LLM_*）。
  * 结果缓存进 job.json（aiBrief / aiBriefAt），同一个任务不重复花钱。
  */
-const AI_BRIEF_MARKDOWN = (d) => `你是 TikTok 电商内容运营专家。基于下面这份本机抓取的运营数据，输出一份「经营分析简报」。
+const AI_BRIEF_MARKDOWN = (d) => `你是 TikTok 电商内容运营专家。基于下面这份本机抓取的运营数据，输出一份「AI 分析」。
 用简体中文，Markdown，总长 500 字以内，直接给判断和动作，禁止空话套话。固定输出以下章节：
 
 ### 一句话结论
@@ -719,7 +711,7 @@ async function applySync(rows, ranges, job) {
 }
 
 /* ================= 内置功能 =================
- * 2.1 起取消「模块商店」：创作中心登录、卖家中心数据、开放平台、AI 单条解读都是应用的固定组成部分，
+ * 2.1 起取消「模块商店」：创作中心登录、卖家中心数据、AI 分析都是应用的固定组成部分，
  * 代码按功能拆在 lib/features/ 下，启动时直接挂载。单个功能挂载失败只记日志，不影响主程序。
  */
 const FEATURE_CTX = {
@@ -749,7 +741,7 @@ videodl.register(app, {
   getOutDir: resolveDownloadDir,
 });
 
-const FEATURES = ['creator-login', 'seller-center', 'seller-api', 'ai-video'];
+const FEATURES = ['creator-login', 'seller-center', 'ai-video'];
 const LOADED_FEATURES = [];
 for (const name of FEATURES) {
   try {

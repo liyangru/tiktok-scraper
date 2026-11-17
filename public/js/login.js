@@ -446,7 +446,7 @@ window.TTLoginUI = (() => {
 })();
 
 const TTLogin = (() => {
-  const TITLES = { 'tiktok-login': 'loginCreator', 'seller-import': 'loginSeller', 'seller-api': 'sellerApiTitle' };
+  const TITLES = { 'tiktok-login': 'loginCreator', 'seller-import': 'loginSeller' };
 
   function open(id) {
     const reg = window.TTFeature.get(id);
