@@ -1,0 +1,11 @@
+{
+  "name": "tiktok-scraper-engine",
+  "version": "2.3.0",
+  "private": true,
+  "description": "和桌面应用同一套引擎：在本机后台抓取 TikTok 账号视频数据，周期对比（上周 / 上月同期）、挂车 vs 非挂车、最佳发布时段、导出 Excel。AI 只调用工具，抓取不经过对话。",
+  "license": "MIT",
+  "dependencies": {
+    "patchright": "^1.63.0",
+    "exceljs": "^4.4.0"
+  }
+}

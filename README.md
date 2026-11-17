@@ -2,7 +2,7 @@
 
 **输入用户名 → 自动抓取主页全部视频数据（播放 / 点赞 / 评论 / 分享 / 收藏 / 时长 / 文案 / 话题标签）→ 周期对比、挂车分析 → 导出 Excel。**
 
-三种用法：桌面应用 · Claude 插件（用 Claude 自带浏览器，独立运行）· Codex / 命令行。
+三种用法：桌面应用 · Claude 桌面应用扩展 / Claude Code 插件（AI 直接调用，抓取不费 token）· Codex / 命令行。
 
 打包成桌面应用和单文件 exe，**自带浏览器，目标机器不需要装 Node.js，也不需要 Chrome**。
 
@@ -39,12 +39,20 @@
 
 ## 不开应用：在 Claude / Codex 里直接用
 
-### Claude 插件（推荐，独立运行）
-
-插件用 **Claude 自带的浏览器**（内置浏览器优先，其次 Claude in Chrome）打开 TikTok 主页采集数据，插件本身只做统计和导出：**不装浏览器、不装依赖、不用开应用，约 200KB**。浏览器面板收起来也能采集。
+和桌面应用**同一套抓取引擎**，做成了 AI 可以调用的工具：抓取在你电脑上后台进行，AI 只收到精简的分析结果（约 1k token），**抓取过程不占对话额度**。对话里说「抓 @loopearplugs.th 本月数据，和上月同期比」就行。
 
 | 用在哪 | 怎么装 |
 |---|---|
+| **Claude 桌面应用（推荐）** | 下载 Releases 里的 `tiktok-scraper.mcpb`，双击安装（依赖已打包，不用装 Node） |
+| **Claude Code** | `/plugin marketplace add liyangru/tiktok-scraper`<br>`/plugin install tiktok-scraper@liyangru-tiktok` |
+| **Codex** | `git clone https://github.com/liyangru/tiktok-scraper && cd tiktok-scraper`<br>`npm run agents codex` |
+| **命令行** | 克隆后 `npm run setup`，然后 `node bin/cli.js scrape loopearplugs.th --preset thisMonth --compare lastMonth --xlsx` |
+
+- 工具：`start_scrape`（抓取，可带对比期，完成时直接返回分析）· `get_scrape`（进度 / 分析摘要）· `list_videos` · `export_report`（Excel / CSV）· `list_scrapes` · `stop_scrape` · `doctor`
+- 装过桌面应用就复用它的浏览器和历史任务；没装则首次使用自动下载一次抓取用浏览器（约 170MB）
+- 插件目录 `plugin/` 和扩展 `.mcpb` 都由 `npm run build:plugin` / `npm run build:mcpb` 从源文件生成，和桌面应用是同一份代码
+
+---|---|
 | **Claude 桌面应用** | 在对话里安装 Releases / PR 附带的 `tiktok-scraper.plugin` |
 | **Claude Code** | `/plugin marketplace add liyangru/tiktok-scraper`<br>`/plugin install tiktok-scraper@liyangru-tiktok` |
 

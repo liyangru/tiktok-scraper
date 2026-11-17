@@ -1,7 +1,7 @@
 {
   "name": "tiktok-scraper",
   "version": "2.3.0",
-  "description": "用 Claude 自带的浏览器抓取 TikTok 账号视频数据：周期对比（上周 / 上月同期）、挂车 vs 非挂车、最佳发布时段、导出 Excel。独立运行，不用装应用。",
+  "description": "和桌面应用同一套引擎：在本机后台抓取 TikTok 账号视频数据，周期对比（上周 / 上月同期）、挂车 vs 非挂车、最佳发布时段、导出 Excel。AI 只调用工具，抓取不经过对话。",
   "author": {
     "name": "liyangru",
     "url": "https://github.com/liyangru"

@@ -38,9 +38,9 @@ tool_timeout_sec = 120
   fs.writeFileSync(file, toml);
   ok(`Codex MCP 已写入 ${file}`);
   // 技能：复制到 ~/.codex/skills（Codex 会自动发现）
-  const dst = path.join(dir, 'skills', 'tiktok-analytics-local');
+  const dst = path.join(dir, 'skills', 'tiktok-analytics');
   fs.mkdirSync(dst, { recursive: true });
-  fs.copyFileSync(path.join(ROOT, 'skills', 'tiktok-analytics-local', 'SKILL.md'), path.join(dst, 'SKILL.md'));
+  fs.copyFileSync(path.join(ROOT, 'skills', 'tiktok-analytics', 'SKILL.md'), path.join(dst, 'SKILL.md'));
   ok(`技能已复制到 ${dst}`);
 }
 
@@ -78,7 +78,7 @@ else {
 Claude Code 推荐用插件：
   /plugin marketplace add liyangru/tiktok-scraper
   /plugin install tiktok-scraper@liyangru-tiktok
-（插件用 Claude 自带浏览器抓取，零依赖；这里的 codex / claude-desktop / claude-code 是完整版，用自带的 Patchright 浏览器抓取）`);
+Claude 桌面应用推荐直接安装扩展：npm run build:mcpb 生成 dist/tiktok-scraper.mcpb，双击安装`);
   process.exit(target === 'help' ? 0 : 1);
 }
 if (target !== 'help') console.log('\n首次调用时会自动安装依赖和抓取用浏览器；也可以先运行：npm run setup');

@@ -21,7 +21,8 @@
     "mcp": "node mcp/server.js",
     "cli": "node bin/cli.js",
     "agents": "node scripts/setup-agents.js",
-    "build:plugin": "node scripts/build-plugin.js"
+    "build:plugin": "node scripts/build-plugin.js",
+    "build:mcpb": "node scripts/build-plugin.js --mcpb"
   },
   "build": {
     "appId": "com.ttscraper.app",
@@ -64,8 +65,7 @@
       "!bin/**",
       "!skills/**",
       "!.claude-plugin/**",
-      "!plugin/**",
-      "!browser/**"
+      "!plugin/**"
     ],
     "extraResources": [
       {

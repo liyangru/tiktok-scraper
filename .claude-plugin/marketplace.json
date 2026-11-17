@@ -11,7 +11,7 @@
     {
       "name": "tiktok-scraper",
       "source": "./plugin",
-      "description": "用 Claude 自带的浏览器抓取 TikTok 账号数据，周期对比、挂车分析、导出 Excel；独立运行，不用装应用",
+      "description": "和桌面应用同一套引擎：本机后台抓取 TikTok 账号数据，周期对比、挂车分析、导出 Excel；AI 只调用工具，抓取不费 token",
       "category": "productivity"
     }
   ]
