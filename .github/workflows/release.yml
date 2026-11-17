@@ -120,18 +120,16 @@ jobs:
           if [ -n "$FFMPEG" ]; then cp "$FFMPEG" vendor/ffmpeg.exe; fi
           ls -lh vendor/ffmpeg.exe 2>/dev/null || echo "ffmpeg 走 PATH 兜底"
 
-      - name: 准备 macOS 版 Chromium 载荷（裁剪版）
+      - name: 准备 macOS 版 Chromium 载荷
         run: |
           set -euo pipefail
           export PLAYWRIGHT_BROWSERS_PATH="$PWD/.mac-browsers"
           npx playwright install chromium
           CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
           [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
+          # 直接用完整载荷（mac 上 build-payload.js 的源探测不可靠），不裁剪，保证构建成功
           tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
-          echo "原始载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
-          node scripts/build-payload.js
-          rm -f browser-payload.tar.gz.bak
-          echo "裁剪后: $(du -sh browser-payload.tar.gz | cut -f1)"
+          echo "载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
 
       - name: 打模块包
         run: node scripts/build-modules.js --local
