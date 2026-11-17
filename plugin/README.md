@@ -1,4 +1,4 @@
-# TikTok Scraper 插件 v2.3.0
+# TikTok Scraper 插件 v2.1.0
 
 和桌面应用同一套引擎：在本机后台抓取 TikTok 账号视频数据，周期对比（上周 / 上月同期）、挂车 vs 非挂车、最佳发布时段、导出 Excel。AI 只调用工具，抓取不经过对话。
 
