@@ -4,6 +4,9 @@
  */
 const { contextBridge, ipcRenderer } = require('electron');
 
+// 让前端知道当前平台：macOS 用系统红黄绿灯，要隐藏自绘的 Windows 风格按钮
+contextBridge.exposeInMainWorld('TTPlatform', process.platform);
+
 contextBridge.exposeInMainWorld('TTWin', {
   minimize: () => ipcRenderer.send('tt-win', 'min'),
   maximize: () => ipcRenderer.send('tt-win', 'max'),

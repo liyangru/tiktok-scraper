@@ -429,6 +429,13 @@ const TTApp = (() => {
     if (!tb || !win || typeof win.minimize !== 'function') return;
     tb.hidden = false;
     document.body.classList.add('has-titlebar');
+    if (window.TTPlatform === 'darwin') {
+      // macOS：红黄绿灯由系统绘制，隐藏自绘的 Windows 风格三枚按钮，只保留顶部拖动区
+      document.body.classList.add('is-mac');
+      const btns = $('#titlebar .tb-btns');
+      if (btns) btns.hidden = true;
+      return;
+    }
     $('#tbMin').addEventListener('click', () => win.minimize());
     $('#tbMax').addEventListener('click', () => (typeof win.toggleMax === 'function' ? win.toggleMax() : win.maximize()));
     $('#tbClose').addEventListener('click', () => win.close());

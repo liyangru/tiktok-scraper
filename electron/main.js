@@ -7,7 +7,10 @@
  *   - 单实例；关窗即退出；可反复打开
  *   - 抓取仍用自带 Chromium（无头），界面用 Electron 自己的窗口
  */
-const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, shell, ipcMain, screen } = require('electron');
+
+const IS_MAC = process.platform === 'darwin';
+const APP_TITLE = 'TikTok 数据分析';
 const path = require('path');
 const fs = require('fs');
 
@@ -17,17 +20,21 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 // ---- 运行环境 ----
-app.disableHardwareAcceleration(); // 关硬件加速：数据面板用不到，且在虚拟机/远程桌面/受限环境更稳
-// ⚠️ 实测：只调 disableHardwareAcceleration 不够 —— 受限环境下 GPU 进程仍会崩
-//    （FATAL: GPU process isn't usable. Goodbye.）导致整个应用退出。这几条必须都加。
-app.commandLine.appendSwitch('disable-gpu');
-app.commandLine.appendSwitch('disable-gpu-compositing');
-app.commandLine.appendSwitch('disable-gpu-sandbox');
-app.commandLine.appendSwitch('disable-software-rasterizer');
+// ⚠️ 原来是无条件关 GPU，因为 Windows 虚拟机 / 远程桌面里 GPU 进程会崩
+//    （FATAL: GPU process isn't usable. Goodbye.）。macOS（尤其 Apple Silicon）没这问题，
+//    关掉硬件加速只会让滚动发卡、更费电。所以只对非 macOS 生效，需要时可用 TT_SAFE_GPU=1 强制。
+const SAFE_GPU = !IS_MAC || process.env.TT_SAFE_GPU === '1';
+if (SAFE_GPU) {
+  app.disableHardwareAcceleration(); // 关硬件加速：数据面板用不到，且在虚拟机/远程桌面/受限环境更稳
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
+  app.commandLine.appendSwitch('disable-gpu-sandbox');
+  app.commandLine.appendSwitch('disable-software-rasterizer');
+  // 受限环境下网络服务也会崩（Network service crashed）→ 关沙箱
+  app.commandLine.appendSwitch('no-sandbox');
+  app.commandLine.appendSwitch('disable-setuid-sandbox');
+}
 app.commandLine.appendSwitch('disable-dev-shm-usage');
-// 受限环境下网络服务也会崩（Network service crashed）→ 关沙箱
-app.commandLine.appendSwitch('no-sandbox');
-app.commandLine.appendSwitch('disable-setuid-sandbox');
 app.commandLine.appendSwitch('no-proxy-server'); // 界面只连本机 127.0.0.1，避免系统代理把 loopback 也代理走
 app.commandLine.appendSwitch('disable-http-cache');
 process.env.NO_AUTO_OPEN = '1'; // 不再开外部浏览器 / Chromium 窗口
@@ -47,6 +54,24 @@ function setupBrowsers() {
 }
 
 let win = null;
+let lastPort = null; // 记住服务端口：macOS 关窗后应用仍驻留，点 Dock 图标要能重新开窗
+
+/**
+ * 窗口控制（preload contextBridge → ipcMain）：最小化 / 最大化切换 / 关闭。
+ * ⚠️ 只能注册一次 —— 之前放在 createWindow 里，第二次开窗会抛
+ *    "Attempted to register a second handler for 'tt-win-ismax'"，
+ *    把窗口创建流程从中间打断（窗口建出来但永不 show），从此 win 指向死对象、点图标没反应。
+ */
+function registerWindowIpc() {
+  ipcMain.on('tt-win', (_e, action) => {
+    if (!win || win.isDestroyed()) return;
+    if (action === 'min') win.minimize();
+    else if (action === 'max') win.maximize();
+    else if (action === 'toggle') (win.isMaximized() ? win.unmaximize() : win.maximize());
+    else if (action === 'close') win.close();
+  });
+  ipcMain.handle('tt-win-ismax', () => (win && !win.isDestroyed() ? win.isMaximized() : false));
+}
 
 /**
  * ⚠️ 主进程兜底：Electron 默认遇到未捕获异常会直接弹框退出，用户只看到「应用没了」。
@@ -136,18 +161,73 @@ function closeSplash() {
   splash = null;
 }
 
+/**
+ * 窗口尺寸：原来写死 1500×960 —— 比 MacBook Air 13" 的可用区域（约 1470×870）还大，
+ * 一开就被屏幕切掉一截。这里按当前屏幕可用区域收缩，同时保留原来的理想尺寸上限。
+ */
+function fitWindowSize() {
+  try {
+    const wa = screen.getPrimaryDisplay().workAreaSize;
+    const width = Math.min(1500, Math.max(880, wa.width - 60));
+    const height = Math.min(960, Math.max(600, wa.height - 60));
+    return { width, height, minWidth: Math.min(1080, width), minHeight: Math.min(720, height) };
+  } catch (_) {
+    return { width: 1500, height: 960, minWidth: 1080, minHeight: 720 };
+  }
+}
+
+/**
+ * 菜单栏：原来 Menu.setApplicationMenu(null) 在 macOS 上是硬伤 ——
+ * 没有「编辑」菜单，输入框里 ⌘C / ⌘V / ⌘A / ⌘Z 全部失效；也没有 ⌘Q / ⌘W / ⌘M。
+ * macOS 用系统菜单栏（应用名 / 编辑 / 显示 / 窗口），其它平台保持无菜单。
+ */
+function buildMenu() {
+  if (!IS_MAC) {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: APP_TITLE,
+        submenu: [
+          { role: 'about', label: `关于 ${APP_TITLE}` },
+          { type: 'separator' },
+          { role: 'hide', label: `隐藏 ${APP_TITLE}` },
+          { role: 'hideOthers', label: '隐藏其他' },
+          { role: 'unhide', label: '全部显示' },
+          { type: 'separator' },
+          { role: 'quit', label: `退出 ${APP_TITLE}` },
+        ],
+      },
+      { role: 'editMenu', label: '编辑' },
+      { role: 'viewMenu', label: '显示' },
+      { role: 'windowMenu', label: '窗口' },
+    ])
+  );
+}
+
 function createWindow(port) {
+  lastPort = port;
+  // 已经有活着的窗口就只聚焦，绝不再建第二个
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+    return;
+  }
+  win = null;
+  const fit = fitWindowSize();
   win = new BrowserWindow({
-    width: 1500,
-    height: 960,
-    minWidth: 1080,
-    minHeight: 720,
+    ...fit,
     show: false,
     backgroundColor: '#fbfbfb',
-    title: 'TikTok 数据分析',
+    title: APP_TITLE,
     autoHideMenuBar: true,
-    // 自定义无边框：应用框与内容融为一体（前端 #titlebar 提供拖动区与三枚窗口按钮）
-    frame: false,
+    // macOS：用系统原生标题栏（红黄绿灯 + 系统级全屏 / 双击缩放 / ⌘W），只把标题栏隐藏
+    // 其它平台：沿用无边框 + 前端自绘的三枚窗口按钮
+    ...(IS_MAC
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 14, y: 12 }, fullscreenable: true }
+      : { frame: false }),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -155,17 +235,8 @@ function createWindow(port) {
       preload: path.join(__dirname, 'preload.js'),
     },
   });
-  Menu.setApplicationMenu(null);
-
-  // 窗口控制（preload contextBridge → ipcMain）：最小化 / 最大化切换 / 关闭
-  ipcMain.on('tt-win', (_e, action) => {
-    if (!win) return;
-    if (action === 'min') win.minimize();
-    else if (action === 'max') win.maximize();
-    else if (action === 'toggle') (win.isMaximized() ? win.unmaximize() : win.maximize());
-    else if (action === 'close') win.close();
-  });
-  ipcMain.handle('tt-win-ismax', () => (win ? win.isMaximized() : false));
+  const self = win; // 固定住本窗口引用，避免回调里读到后来被替换掉的 win
+  buildMenu();
   win.once('ready-to-show', () => {
     console.log('[app] ready-to-show');
     win.show();
@@ -247,7 +318,7 @@ function createWindow(port) {
     } catch (_) {}
   });
   win.on('closed', () => {
-    win = null;
+    if (win === self) win = null;
   });
 
   // 调试用：TT_SHOT=<png路径> 时，页面加载后截图并退出（用于自动化验证界面）
@@ -263,15 +334,28 @@ function createWindow(port) {
 }
 
 app.on('second-instance', () => {
-  if (win) {
+  // 再次双击 .app：有窗口就聚焦，没窗口（macOS 关窗后应用仍在）就重新开一个
+  if (win && !win.isDestroyed()) {
     if (win.isMinimized()) win.restore();
     win.show();
     win.focus();
+  } else {
+    win = null;
+    if (lastPort) createWindow(lastPort);
   }
 });
 
 app.whenReady().then(async () => {
   app.setAppUserModelId('com.ttscraper.app');
+  registerWindowIpc(); // 只注册一次
+  if (IS_MAC) {
+    app.setAboutPanelOptions({
+      applicationName: APP_TITLE,
+      applicationVersion: app.getVersion(),
+      version: app.getVersion(),
+      credits: 'TikTok 多账号数据抓取（macOS 适配版）',
+    });
+  }
 
   // 闪屏先起，覆盖后面的解压 + 服务启动全程
   createSplash();
@@ -302,4 +386,18 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('window-all-closed', () => app.quit());
+// macOS 惯例：关掉窗口不退出应用（服务继续驻留，点 Dock 图标即可恢复窗口，⌘Q 才真正退出）
+app.on('window-all-closed', () => {
+  if (!IS_MAC) app.quit();
+});
+
+app.on('activate', () => {
+  // 点 Dock 图标 / 重新激活应用：有活窗口就聚焦，没有就重建
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+    return;
+  }
+  win = null;
+  if (lastPort) createWindow(lastPort);
+});

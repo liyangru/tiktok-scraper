@@ -74,6 +74,9 @@ h1, h2, h3 { margin: 0; }
 body.has-titlebar { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 body.has-titlebar .wrap { flex: 1; overflow-y: auto; max-width: none; width: 100%; }
 body.has-titlebar .wrap > * { max-width: 1392px; margin-left: auto; margin-right: auto; }
+/* macOS：红黄绿灯由系统绘制 —— 左侧留出让位，隐藏自绘的 Windows 风格按钮 */
+body.is-mac #titlebar { padding-left: 78px; }
+body.is-mac #titlebar .tb-btns { display: none; }
 
 /* ---------- 顶栏 ---------- */
 header.top {
