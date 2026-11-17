@@ -35,7 +35,7 @@
   - MCP 服务 `mcp/server.js`（零依赖 stdio）：`start_scrape` / `get_scrape` / `list_videos` / `list_scrapes` / `export_report` / `stop_scrape` / `doctor`；抓取先启动后查询，不受客户端 60 秒超时限制；返回精简 JSON 省 token
   - 命令行 `bin/cli.js`：`tiktok-scraper scrape @a @b --preset thisMonth --compare lastMonth --xlsx`
   - 与桌面应用共用数据目录（历史任务、视频库、浏览器），装过应用就不用再下载浏览器；没装则首次使用自动安装依赖和 Chromium
-- 抓取进度改为真实百分比：按「已经往回加载到哪一天」占需要覆盖日期的比例计算，带「启动 → 打开主页 → 加载视频 → 整理 → 统计」步骤条，每个账号单独显示进度和已加载到的日期
+- 抓取进度改为真实百分比（按已经往回加载到哪一天计算），界面只有一行状态（如「正在加载视频 71%」）、一条进度条和每个账号的条数，日志默认收起
 - 打开历史任务时结果区淡出 + 顶部加载条，历史行内转圈
 - 发布时段柱状图 + 最佳时段（样本 ≥2 条）
 - 「复制简报」：一键复制本期结论（汇总、对比、TOP 视频）到剪贴板

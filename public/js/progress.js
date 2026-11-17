@@ -4,7 +4,7 @@
    百分比完全由真实状态算出，不按时间推算：
    - 每个账号：启动 → 打开主页 → 读取账号 → 滚动加载（按「已经往回加载到哪一天」占需要覆盖日期的比例）→ 整理；
    - 总进度 = 各账号进度平均 × 95% + 保存 / 统计阶段；
-   - 下面是带文字的步骤条，以及每个账号自己的进度条（加载到哪天、多少条）；
+   - 界面保持简洁：一行状态 + 百分比 + 一条进度条，每个账号一行条数，日志默认收起；
    - 结束后（完成 / 停止 / 失败 / 中断）收成一行结果，账号明细与日志折叠在下面。
    ============================================================ */
 const TTProgress = (() => {
@@ -16,14 +16,6 @@ const TTProgress = (() => {
   const logLines = [];
 
   const STEPS = ['init', 'launch', 'open', 'profile', 'scroll', 'filter', 'save', 'stats'];
-  // 展示给用户的步骤（合并相近阶段）
-  const VIEW_STEPS = [
-    { key: 'launch', has: ['init', 'launch'] },
-    { key: 'open', has: ['open', 'profile'] },
-    { key: 'scroll', has: ['scroll'] },
-    { key: 'filter', has: ['filter', 'save'] },
-    { key: 'stats', has: ['stats'] },
-  ];
   /** 单个账号的真实完成度 0~1 */
   function accFraction(a) {
     if (['done', 'failed', 'stopped'].includes(a.state)) return 1;
@@ -91,19 +83,28 @@ const TTProgress = (() => {
       .map((a) => {
         const live = a.state === 'running' || a.state === 'retrying';
         const label = a.state === 'retrying' ? t('acc_retrying', { n: a.attempt || 2, max: 3 }) : t('acc_' + a.state);
-        const reached = a.stage === 'scroll' && a.reached ? ` · ${esc(t('reachedDate', { d: a.reached.slice(5) }))}` : '';
         const n = live ? esc(t('nVideos', { n: fmtInt(a.found || 0) })) : a.state === 'done' ? esc(t('acc_doneN', { n: fmtInt(a.count || 0) })) : '';
-        const bar = live
-          ? `<div class="acct-sub">${esc(stageText(a.stage || 'open'))}${reached}<b>${Math.round(accFraction(a) * 100)}%</b></div><div class="mini-bar"><i style="width:${Math.round(accFraction(a) * 100)}%"></i></div>`
-          : '';
         return `<div class="acct-block"><div class="hd">
             <span class="h">@${esc(a.handle)}</span>
             <span class="n">${n}</span>
             <span class="badge ${BADGE[a.state] || ''}">${esc(label)}</span>
-          </div>${bar}
+          </div>
           ${a.error && (a.state === 'failed' || a.state === 'retrying') ? `<div class="e">${esc(a.error)}</div>` : ''}
           ${a.state === 'done' && a.complete === false ? `<div class="e warn">${esc(t('accIncomplete'))}</div>` : ''}
         </div>`;
+      })
+      .join('');
+  }
+
+  /* 抓取中：每个账号一行（状态点 + 账号 + 条数），失败 / 重试原因在下面一行 */
+  function accLines(job) {
+    return (job.accounts || [])
+      .map((a) => {
+        const live = a.state === 'running' || a.state === 'retrying';
+        const n = a.state === 'done' ? a.count || 0 : a.found || 0;
+        const right = a.state === 'queued' ? esc(t('acc_queued')) : a.state === 'failed' ? esc(t('acc_failed')) : esc(t('nVideos', { n: fmtInt(n) }));
+        const err = a.error && (a.state === 'failed' || a.state === 'retrying') ? `<div class="acc-err">${esc(a.state === 'retrying' ? t('acc_retrying', { n: a.attempt || 2, max: 3 }) + ' · ' : '')}${esc(a.error)}</div>` : '';
+        return `<div class="acc-line s-${a.state}"><i class="dot${live ? ' live' : ''}"></i><span class="h">@${esc(a.handle)}</span><span class="n">${right}</span></div>${err}`;
       })
       .join('');
   }
@@ -122,22 +123,20 @@ const TTProgress = (() => {
     collectLog(job);
     const acc = job.accounts || [];
     const total = acc.length || (job.handles || []).length;
-    const settled = acc.filter((a) => ['done', 'failed', 'stopped'].includes(a.state)).length;
     const found = acc.reduce((s, a) => s + (a.state === 'done' ? a.count || 0 : a.found || 0), 0);
 
     if (RUNNING.includes(job.status)) {
       const cur = acc.find((a) => a.state === 'running' || a.state === 'retrying');
       const stage = job.status === 'stopping' ? 'stopping' : (cur && cur.stage) || job.stage;
-      const atStep = VIEW_STEPS.findIndex((v) => v.has.includes(stage));
       const pct = Math.round(jobPercent(job) * 100);
+      const queued = job.status === 'queued';
+      // 简洁：一行状态 + 一条进度条 + 每个账号一行；日志默认收起
       body.innerHTML = `
-        <div class="task-head"><span class="spin"></span><div class="task-title">${esc(stageText(stage))}${cur ? ` · @${esc(cur.handle)}` : ''}</div><b class="task-pct">${job.status === 'queued' ? esc(t('acc_queued')) : pct + '%'}</b></div>
+        <div class="task-head"><span class="spin"></span><div class="task-title">${esc(stageText(stage))}</div><b class="task-pct">${queued ? '' : pct + '%'}</b></div>
         ${netWarn ? `<div class="notice warn" style="margin-bottom:12px"><span>${esc(netWarn)}</span></div>` : ''}
-        <div class="pbar${job.status === 'queued' ? ' indet' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><i style="width:${pct}%"></i></div>
-        <ol class="vsteps">${VIEW_STEPS.map((v, i) => `<li class="${atStep < 0 ? '' : i < atStep ? 'done' : i === atStep ? 'on' : ''}"><span>${esc(t('vstep_' + v.key))}</span></li>`).join('')}</ol>
-        <div class="task-meta"><span>${esc(t('tsAccounts'))} <b>${settled}/${total}</b></span><span>${esc(t('tsFound'))} <b>${fmtInt(found)}</b></span></div>
-        ${accountRows(job)}
-        <div style="margin-top:12px">${TTCollapse.html({ id: 'task:log', variant: 'item', title: esc(t('log')), summary: `<span>${logLines.length}</span>`, extra: `<button type="button" class="xs ghost" data-copy-log>${esc(t('copyLog'))}</button>`, body: logHtml() })}</div>`;
+        <div class="pbar${queued ? ' indet' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-valuetext="${esc(stageText(stage))} ${pct}%"><i style="width:${pct}%"></i></div>
+        <div class="acc-lines">${accLines(job)}</div>
+        ${logLines.length ? `<div style="margin-top:10px">${TTCollapse.html({ id: 'task:log', variant: 'item', title: esc(t('log')), summary: `<span>${logLines.length}</span>`, extra: `<button type="button" class="xs ghost" data-copy-log>${esc(t('copyLog'))}</button>`, body: logHtml() })}</div>` : ''}`;
       if (!ticker) ticker = setInterval(tick, 1000);
     } else {
       const failedN = acc.filter((a) => a.state === 'failed').length;
