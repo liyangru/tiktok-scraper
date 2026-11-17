@@ -10,7 +10,6 @@
       <div class="si-row">
         <select id="aiVid" class="si-select" style="flex:1;min-width:300px"></select>
         <button id="aiVideo" class="btn-like primary">${esc(t('aiVideoBtn'))}</button>
-        <button id="aiRemake" class="btn-like">${esc(t('aiRemakeBtn'))}</button>
       </div>
       <div class="si-row">
         <select id="aiJob" class="si-select" style="flex:1;min-width:260px"></select>
@@ -84,18 +83,7 @@
       }
     });
 
-    $('#aiRemake').addEventListener('click', async () => {
-      const vid = $('#aiVid').value;
-      if (!vid) return;
-      status(t('aiRemakeWorking'));
-      try {
-        const r = await post('/api/ai-analyst/remake', { vid });
-        show(r.script, r.file);
-        status(t('aiRemakeDone', { n: r.frames }), 'ok');
-      } catch (e) {
-        status(e.message, 'err');
-      }
-    });
+    
 
     loadVideos();
   }

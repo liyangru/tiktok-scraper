@@ -59,7 +59,8 @@ function sha256(file) {
     const sum = sha256(out);
     const url = LOCAL
       ? out.replace(/\\/g, '/')
-      : `https://github.com/${REPO}/releases/download/${TAG}/${name}`;
+      // 生产：模块包与索引同仓（raw.githubusercontent），与 lib/modules.js 的远端索引地址配套
+      : `https://raw.githubusercontent.com/${REPO}/master/modules/${name}`;
 
     modules.push({
       id: man.id,
@@ -80,8 +81,30 @@ function sha256(file) {
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.writeFileSync(target, JSON.stringify(index, null, 2) + '\n');
 
+  // 再写一份「相对路径」索引到 modules-dist/，随 exe 的 extraResources 一起分发。
+  // ⚠️ 生产索引的 url 是 raw.githubusercontent.com 绝对地址，在离线/无网机器上装不了；
+  //    这份把 url 换成纯文件名，lib/modules.js 会按索引所在目录解析成绝对路径。
+  const distIndex = { generatedAt: index.generatedAt, tag: TAG, modules: modules.map((m) => ({ ...m, url: m.url.split('/').pop() })) };
+  fs.writeFileSync(path.join(DIST, 'index.json'), JSON.stringify(distIndex, null, 2) + '\n');
+
+  // ⚠️ 清掉不再被索引引用的旧版本包。
+  // 不清理的话 modules-dist/ 会一直堆历史版本，而 extraResources 是整目录打进安装包的
+  // —— 实测 1.1.5 的 resources/modules-dist 里混着 ai-analyst-1.0.0 / seller-import-1.2.0
+  // / tiktok-login-1.1.0 等早就没人引用的死文件。
+  const keep = new Set(modules.map((m) => `${m.id}-${m.version}.tar.gz`));
+  const removed = [];
+  for (const f of fs.readdirSync(DIST)) {
+    if (!f.endsWith('.tar.gz') || keep.has(f)) continue;
+    try {
+      fs.rmSync(path.join(DIST, f), { force: true });
+      removed.push(f);
+    } catch (_) {}
+  }
+
   console.log(`\n索引写入: ${target}`);
+  console.log(`内置索引写入: ${path.join(DIST, 'index.json')}（相对路径，随 exe 分发）`);
   console.log(`模块数: ${modules.length}${LOCAL ? '（本地模式）' : `（tag ${TAG}）`}`);
+  if (removed.length) console.log(`清理旧包 ${removed.length} 个: ${removed.join(', ')}`);
 })().catch((e) => {
   console.error('打包失败:', e.message);
   process.exit(1);

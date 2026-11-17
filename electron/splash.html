@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>TikTok 数据分析</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: #fbfbfb; color: #111;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    -webkit-app-region: drag; user-select: none; overflow: hidden;
+  }
+  .card { width: 300px; text-align: center; }
+
+  /* 三层转环（与主界面同一套动效） */
+  .ring { position: relative; width: 46px; height: 46px; margin: 0 auto 18px; }
+  .ring i {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 2px solid transparent; border-top-color: #111;
+    animation: spin 1.1s cubic-bezier(.6,.1,.4,.9) infinite;
+  }
+  .ring i:nth-child(2) { inset: 7px; border-top-color: #8a8a8a; animation-duration: 1.5s; animation-direction: reverse; }
+  .ring i:nth-child(3) { inset: 14px; border-top-color: #d4d4d4; animation-duration: 2s; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .title { font-size: 15px; font-weight: 650; letter-spacing: .2px; }
+  .sub { margin-top: 7px; font-size: 12.5px; color: #737373; min-height: 18px; }
+
+  .track { position: relative; margin: 16px 0 8px; height: 3px; border-radius: 2px; background: #e6e6e6; overflow: hidden; }
+  .track i { position: absolute; inset: 0 auto 0 0; width: 0; background: #111; border-radius: 2px; transition: width .45s cubic-bezier(.4,0,.2,1); }
+  .track i::after {
+    content: ""; position: absolute; right: 0; top: 0; bottom: 0; width: 38%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.55));
+    animation: sweep 1.3s ease-in-out infinite;
+  }
+  @keyframes sweep { 0% { right: 38%; } 100% { right: -38%; } }
+
+  .meta { display: flex; justify-content: space-between; font-size: 11.5px; color: #8a8a8a; }
+  .meta .pct { color: #111; font-variant-numeric: tabular-nums; }
+  .meta .time { color: #b5b5b5; font-variant-numeric: tabular-nums; }
+
+  .steps { display: flex; justify-content: center; gap: 6px; margin-top: 16px; }
+  .steps span { width: 6px; height: 6px; border-radius: 50%; background: #e6e6e6; transition: background .3s ease, transform .3s ease; }
+  .steps span.on { background: #111; transform: scale(1.25); }
+  .steps span.done { background: #8a8a8a; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="ring"><i></i><i></i><i></i></div>
+    <div class="title" id="title">TikTok 数据分析</div>
+    <div class="sub" id="sub">正在启动…</div>
+    <div class="track"><i id="fill"></i></div>
+    <div class="meta">
+      <span class="pct" id="pct">0%</span>
+      <span class="time" id="time">00:00</span>
+    </div>
+    <div class="steps" id="steps"><span></span><span></span><span></span></div>
+  </div>
+
+  <script>
+    // 主进程通过 window.__boot(pct, sub, stepIndex) 推进度
+    const $ = (id) => document.getElementById(id);
+    const STEPS = 3;
+    // 三语：闪屏也要跟着应用语言走（主进程先推 lang 再推文案）
+    const I18N = {
+      zh: ['TikTok 数据分析', '正在准备启动…', '正在准备内置浏览器…', '内置浏览器就绪', '正在启动本地服务…', '正在打开界面…', '浏览器准备异常，继续启动'],
+      th: ['TikTok Data', 'กำลังเตรียมการเริ่ม', 'กำลังเตรียมเบราว์เซอร์…', 'เบราว์เซอร์พร้อม', 'กำลังเริ่มเซิร์ฟเวอร์…', 'กำลังเปิดหน้าต่าง…', 'เบราว์เซอร์มีปัญหา กำลังเริ่มต่อ'],
+      en: ['TikTok Analytics', 'Preparing to start…', 'Preparing built-in browser…', 'Browser ready', 'Starting local service…', 'Opening the app…', 'Browser issue — continuing'],
+    };
+    window.__boot = function (pct, sub, lang) {
+      const L = I18N[lang] || I18N.zh;
+      $('title').textContent = L[0];
+      $('sub').textContent = sub ? (sub.startsWith('L:') ? L[Number(sub.slice(2))] || sub : sub) : L[1];
+      const p = Math.max(0, Math.min(100, pct));
+      $('fill').style.width = p + '%';
+      $('pct').textContent = Math.round(p) + '%';
+      const lit = Math.round((p / 100) * STEPS);
+      Array.from($('steps').children).forEach((c, i) => {
+        c.className = i < lit ? 'done' : i === lit ? 'on' : '';
+      });
+    };
+    // 计时器：闪屏一加载就开始走（之前等第一次 __boot 才起，早期阶段一直显示 00:00）
+    const t0 = Date.now();
+    setInterval(() => {
+      const s = Math.floor((Date.now() - t0) / 1000);
+      $('time').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    }, 500);
+  </script>
+</body>
+</html>

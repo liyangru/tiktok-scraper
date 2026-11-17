@@ -1,12 +1,14 @@
 {
   "id": "ai-analyst",
-  "name": "AI 分析与复刻脚本",
-  "version": "1.0.0",
-  "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌级解读；选一条视频抽帧后由视觉模型生成复刻脚本（hook/分镜/文案/CTA/发布建议）。需要先在 .env 配置 LLM_BASE_URL / LLM_API_KEY。",
+  "name": "AI 数据分析",
+  "version": "1.2.0",
+  "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌/账号级解读。需先在设置里配置大模型接口。",
   "author": "liyangru",
   "core": ">=1.0.0",
   "requires": [],
-  "permissions": ["network", "file"],
+  "permissions": [
+    "network"
+  ],
   "config": [],
   "secretConfig": []
 }

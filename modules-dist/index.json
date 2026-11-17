@@ -1,61 +1,17 @@
 {
-  "generatedAt": "2026-10-10T15:11:58.133Z",
+  "generatedAt": "2026-11-17T00:38:03.359Z",
   "tag": "modules-v1",
   "modules": [
     {
       "id": "ai-analyst",
-      "name": "AI 分析与复刻脚本",
-      "version": "1.0.0",
-      "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌级解读；选一条视频抽帧后由视觉模型生成复刻脚本（hook/分镜/文案/CTA/发布建议）。需要先在 .env 配置 LLM_BASE_URL / LLM_API_KEY。",
+      "name": "AI 数据分析",
+      "version": "1.2.0",
+      "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌/账号级解读。需先在设置里配置大模型接口。",
       "author": "liyangru",
       "requires": [],
-      "size": 6209,
-      "sha256": "47ca4fee644238efe608d17e774e0c6d1fe333130d03af11cd70590f68ef4b16",
-      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/ai-analyst-1.0.0.tar.gz"
-    },
-    {
-      "id": "brand-analytics",
-      "name": "品牌媒体分析",
-      "version": "1.0.0",
-      "description": "把多个账号归到同一品牌下看整体：品牌总粉丝/总播放/总互动、账号贡献对比（谁贡献最多）、月度趋势、品牌 TOP 视频榜，以及互动率、平均时长等媒体运营指标。",
-      "author": "liyangru",
-      "requires": [],
-      "size": 5080,
-      "sha256": "7947b860ba1106d33d95a7cead2cab0687326e9884a1dcd5222a35b27d4f2819",
-      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/brand-analytics-1.0.0.tar.gz"
-    },
-    {
-      "id": "seller-import",
-      "name": "卖家中心导入与挂车分析",
-      "version": "1.0.0",
-      "description": "导入卖家中心导出的「视频表现」xlsx，按视频ID与应用抓到的 TikTok 视频交叉匹配：匹配上=挂车（补 GMV/订单等商家指标），TikTok 有而卖家中心没有=没挂车，卖家中心有而 TikTok 没有=广告计划/混剪（自动剔除，不污染数据）。",
-      "author": "liyangru",
-      "requires": [],
-      "size": 14897,
-      "sha256": "473d2fb6e879b63002ce45faa526f0ac2d6e818a52cf81413a93278008b0579a",
-      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/seller-import-1.0.0.tar.gz"
-    },
-    {
-      "id": "tiktok-login",
-      "name": "TikTok 账号登录",
-      "version": "1.0.0",
-      "description": "登录 TikTok 账号（扫码优先，可切账密/邮箱，全程无头不弹窗）。登录后可解锁：自己账号的创作中心数据（平均观看时长/完播率/流量来源/受众画像）、完整评论区、关注粉丝列表。",
-      "author": "liyangru",
-      "requires": [],
-      "size": 7112,
-      "sha256": "66ddecd641ac696766a49832f73925decdfe6f656e6aa610b00c76496be498d0",
-      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/tiktok-login-1.0.0.tar.gz"
-    },
-    {
-      "id": "video-download",
-      "name": "视频下载",
-      "version": "1.0.0",
-      "description": "四种模式下载视频：单个链接 / 批量链接 / 整个主页 / 直接给 vid。优先取无水印源流与最高清晰度。",
-      "author": "liyangru",
-      "requires": [],
-      "size": 9212,
-      "sha256": "5b67033b3cd8801b444223f0edc5edee23b43151bd3445fe626419b898a34cd4",
-      "url": "D:/XIAZAI/浏览器/2026-10-09-03-06-27/tiktok-scraper/modules-dist/video-download-1.0.0.tar.gz"
+      "size": 4301,
+      "sha256": "b3058e36472c40a6fb54d9c19d64325a2d0730b0040ea217b54a00ea6ec08178",
+      "url": "ai-analyst-1.2.0.tar.gz"
     }
   ]
 }

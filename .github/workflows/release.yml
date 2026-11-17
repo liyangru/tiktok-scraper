@@ -6,14 +6,16 @@
 #
 # 产出：
 #   Windows  TikTokScraper-<版本>.exe   （Electron 便携版，主推）
-#            tiktok-scraper.exe         （pkg 单文件便携版，备选）
 #   macOS    TikTokScraper-<版本>-arm64-mac.zip（Apple Silicon）
 #            TikTokScraper-<版本>-x64-mac.zip  （Intel）
 #   本地/服务器部署包
 #            tiktok-scraper-server-<版本>.tar.gz（源码 + 一键启动脚本）
 #
-# 说明：所有平台的浏览器（Chromium）都在 CI 里现下现打，所以仓库里不需要放大文件
-#      （GitHub 单文件上限 100MB，180MB+ 的浏览器载荷本来也进不了仓库）。
+# 说明：
+#   - 所有平台的浏览器（Chromium）都在 CI 里现下现打，并跑一遍 scripts/build-payload.js
+#     裁掉用不到的部分，所以仓库里不需要放大文件。
+#   - 模块包（modules-dist）随安装包一起分发，但**默认全部是「未安装」状态**：
+#     用户在设置里点「下载」才会真正安装，符合「按需装配」。
 
 name: release
 
@@ -41,7 +43,7 @@ jobs:
       - name: 安装依赖
         run: npm install --no-audit --no-fund
 
-      - name: 准备 Windows 版 Chromium 载荷
+      - name: 准备 Windows 版 Chromium 载荷（裁剪版）
         shell: bash
         run: |
           set -euo pipefail
@@ -51,19 +53,22 @@ jobs:
           CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
           [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
           tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
-          echo "载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+          echo "原始载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+          # 裁掉多语言包 / WebGPU·SwiftShader / 安装器 / PWA 启动器等确实用不到的部分
+          node scripts/build-payload.js
+          rm -f browser-payload.tar.gz.bak
+          echo "裁剪后: $(du -sh browser-payload.tar.gz | cut -f1)"
 
-      - name: 构建 pkg 单文件 exe
-        run: npm run build:exe
+      - name: 打模块包（默认全部「未安装」，用户点下载才装）
+        run: node scripts/build-modules.js --local
 
       - name: 构建 Electron 便携版
-        run: npm run build:app
+        run: npx electron-builder --win portable --publish never
 
       - name: 汇总产物
         shell: bash
         run: |
           mkdir -p out
-          cp dist/tiktok-scraper.exe out/tiktok-scraper.exe
           cp release/*.exe out/
           ls -la out/
 
@@ -96,7 +101,7 @@ jobs:
       - name: 安装依赖
         run: npm install --no-audit --no-fund
 
-      - name: 准备 macOS 版 Chromium 载荷
+      - name: 准备 macOS 版 Chromium 载荷（裁剪版）
         run: |
           set -euo pipefail
           export PLAYWRIGHT_BROWSERS_PATH="$PWD/.mac-browsers"
@@ -104,7 +109,13 @@ jobs:
           CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
           [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
           tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
-          echo "载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+          echo "原始载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+          node scripts/build-payload.js
+          rm -f browser-payload.tar.gz.bak
+          echo "裁剪后: $(du -sh browser-payload.tar.gz | cut -f1)"
+
+      - name: 打模块包
+        run: node scripts/build-modules.js --local
 
       - name: electron-builder 打包
         run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never -c.directories.output=release-mac
@@ -222,17 +233,18 @@ jobs:
             echo ""
             echo "| 平台 | 文件 | 说明 |"
             echo "|---|---|---|"
-            echo "| Windows | \`TikTokScraper-${VER}.exe\` | Electron 桌面应用，双击即用（推荐） |"
-            echo "| Windows | \`tiktok-scraper.exe\` | pkg 单文件便携版（备选） |"
+            echo "| Windows | \`TikTokScraper-${VER}.exe\` | Electron 桌面应用，双击即用 |"
             echo "| macOS Apple Silicon | \`TikTokScraper-${VER}-arm64-mac.zip\` | M 系列芯片 |"
             echo "| macOS Intel | \`TikTokScraper-${VER}-x64-mac.zip\` | Intel 芯片 |"
             echo "| 本地 / 服务器 | \`tiktok-scraper-server-${VER}.tar.gz\` | 源码 + \`start.sh\`，需 Node 18+ |"
             echo ""
-            echo "所有发行版都**自带浏览器**，不依赖系统 Chrome、运行时不联网下载。"
+            echo "所有发行版都**自带浏览器**：不依赖系统 Chrome / Edge，不会打开系统默认浏览器，"
+            echo "运行时也不联网下载任何东西。功能以**模块**方式提供，默认全部未安装，"
+            echo "在「设置」里点「下载」即可装（装完重启应用生效）。"
             echo ""
             echo "### 首次运行"
             echo ""
-            echo "- **Windows**：双击 exe。首次启动会把自带 Chromium 解压到同目录的 \`tiktok-scraper-data/\`（约 440MB，几秒），之后秒开。"
+            echo "- **Windows**：双击 exe。首次启动会把自带 Chromium 解压到应用数据目录（约 330MB，几秒），之后秒开。"
             echo "- **macOS**：解压后把 \`.app\` 拖进「应用程序」。未做 Apple 公证，首次打开请**右键 → 打开**，或执行 \`xattr -dr com.apple.quarantine /Applications/TikTokScraper.app\`"
             echo "- **服务器**：解压后 \`./start.sh\`。"
             echo ""

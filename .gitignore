@@ -22,12 +22,28 @@ Thumbs.db
 
 # 打包产物
 *.tar.gz
+*.bak
 dist/
 release/
 release-mac/
 
+# 运行时写入的实际端口（每台机器可能不同，不能入库）
+runtime.json
+
 # 误生成的垃圾文件（Windows 保留名）
 nul
+
+# 调试/验证残留（截屏、日志、临时脚本输出）：一律 _ 开头，不入库
+_*.txt
+_*.png
+_*.log
+.tmp/
+
+# 下载到本机的视频（运行产物，体积大）
+downloads/
+
+# 崩溃日志（运行产物）
+crash.log
 
 # 界面窗口的浏览器 profile（运行产物）
 ui-profile/

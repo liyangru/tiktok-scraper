@@ -1,29 +1,39 @@
 {
   "name": "tiktok-scraper",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "private": true,
-  "description": "TikTok 多账号视频数据抓取与报表生成",
+  "description": "TikTok 数据分析（AI 解读 / 脚本复刻 / 品牌分析）· 无浏览器 · 无登录 · 极简版",
   "author": "TikTok Scraper",
   "main": "electron/main.js",
-  "bin": "bootstrap.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "app": "electron .",
-    "build:app": "electron-builder --win portable --publish never",
+    "build:modules": "node scripts/build-modules.js --local",
+    "build:app": "node scripts/build-modules.js --local && electron-builder --win --publish never",
     "build:app:mac": "bash scripts/build-mac.sh",
-    "build:exe": "node scripts/patch-pkg.js && pkg . --targets node22-win-x64 --no-bytecode --public --public-packages \"*\" --output dist/tiktok-scraper.exe && node scripts/patch-exe-subsystem.js dist/tiktok-scraper.exe"
+    "release": "node scripts/build-modules.js --local && electron-builder --win --publish always",
+    "release:local": "node scripts/build-modules.js --local && node scripts/build-modules.js && electron-builder --win --publish never"
   },
   "build": {
     "appId": "com.ttscraper.app",
     "productName": "TikTokScraper",
+    "asar": true,
     "directories": {
       "output": "release",
       "buildResources": "build"
     },
     "files": [
       "**/*",
-      "!browser-payload*.tar.gz",
+      "!*.bak",
+      "!**/.env",
+      "!**/.env.*",
+      "!runtime.json",
+      "!settings.json",
+      "!_*.txt",
+      "!_*.png",
+      "!_*.js",
+      "!scripts/_*.js",
       "!.*-browsers/**",
       "!.mac-browsers*/**",
       "!.win-browsers*/**",
@@ -34,17 +44,22 @@
       "!out/**",
       "!data/**",
       "!browsers/**",
+      "!modules/**",
+      "!modules-src/**",
+      "!modules-dist/**",
+      "!docs/**",
+      "!scripts/**",
+      "!vendor/**",
       "!*.md",
       "!nul"
     ],
     "extraResources": [
       {
-        "from": "browser-payload.tar.gz",
-        "to": "browser-payload.tar.gz"
-      },
-      {
-        "from": "modules-dist/",
-        "to": "modules-dist/"
+        "from": "modules-dist",
+        "to": "modules-dist",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {
@@ -54,13 +69,28 @@
           "arch": [
             "x64"
           ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico"
     },
     "portable": {
-      "artifactName": "TikTokScraper-${version}.exe"
+      "artifactName": "TikTokScraper-${version}-portable.exe"
     },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "TikTokScraper-${version}-setup.exe"
+    },
+    "compression": "normal",
     "mac": {
       "target": [
         {
@@ -71,40 +101,25 @@
       "category": "public.app-category.productivity",
       "identity": null,
       "artifactName": "TikTokScraper-${version}-${arch}-mac.zip"
-    }
-  },
-  "pkg": {
-    "assets": [
-      "public/**/*",
-      "browser-payload.tar.gz",
-      "modules-dist/*.tar.gz",
-      "modules-dist/index.json",
-      "node_modules/playwright-core/**/*.json",
-      "node_modules/patchright-core/**/*.json",
-      "node_modules/patchright/**/*.json",
-      "node_modules/**/*.mjs",
-      "node_modules/**/*.cjs",
-      "node_modules/generator-function/**/*",
-      "node_modules/async-function/**/*"
-    ],
-    "targets": [
-      "node22-win-x64"
-    ],
-    "outputPath": "dist"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "liyangru",
+        "repo": "tiktok-scraper",
+        "releaseType": "release"
+      }
+    ]
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
-    "express": "^4.21.2",
-    "patchright": "^1.63.0",
-    "playwright": "^1.64.0",
-    "playwright-core": "^1.63.0",
+    "express": "^5.2.0",
     "tar": "^7.5.22"
   },
   "devDependencies": {
-    "@yao-pkg/pkg": "^6.23.0",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3"
   }

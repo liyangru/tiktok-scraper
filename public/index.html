@@ -10,6 +10,16 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<!-- 自定义窗口控制条（Electron 无边框窗口；浏览器里自动隐藏）。
+     与页面融为一体：同一底色、无外框，只有拖动区和三个极简窗口按钮 -->
+<div id="titlebar" style="display:none">
+  <div class="tb-drag" id="tbDrag"></div>
+  <div class="tb-btns">
+    <button type="button" id="tbMin" aria-label="min">&#x2013;</button>
+    <button type="button" id="tbMax" aria-label="max">&#x25A1;</button>
+    <button type="button" id="tbClose" aria-label="close">&#x2715;</button>
+  </div>
+</div>
 <div class="wrap">
 
   <header class="top topbar">
@@ -76,6 +86,15 @@
         </div>
       </div>
 
+      <div class="panel" id="sellerPanel" style="display:none">
+        <h2 class="sec-title"><span data-i18n="sellerDataGroup">卖家数据导入</span></h2>
+        <div class="btn-row">
+          <button type="button" id="sellerManualBtn" data-i18n="sellerManual"></button>
+        </div>
+        <!-- 「自动导入」按钮已删：登录卖家中心后抓取/同步时自动导入，不需要手动点 -->
+        <div class="notice" style="margin:10px 0 0;font-size:11.5px" data-i18n="sellerPanelNote"></div>
+      </div>
+
       <div class="panel">
         <h2 class="sec-title"><span data-i18n="progress">进度</span> <span class="hint" id="resultMeta"></span></h2>
         <div id="accounts" aria-live="polite"><div class="empty" style="padding:20px" data-i18n="notStarted"></div></div>
@@ -109,63 +128,94 @@
         </span>
       </div>
       <div class="panel" id="resultsPanel" style="display:none">
+        <!-- 加载动画层：抓取/解析期间盖住结果区，明确告知进度（不再干等） -->
+        <div class="load-veil" id="loadVeil" style="display:none">
+          <div class="load-card">
+            <div class="load-ring"><i></i><i></i><i></i></div>
+            <div class="load-title" id="loadTitle"></div>
+            <div class="load-sub" id="loadSub"></div>
+            <div class="load-track"><i id="loadFill"></i></div>
+            <div class="load-meta">
+              <span id="loadPct">0%</span>
+              <span class="dim" id="loadTime">00:00</span>
+            </div>
+            <div class="load-steps" id="loadSteps"></div>
+          </div>
+        </div>
         <h2 class="sec-title"><span data-i18n="overview">结果概览</span></h2>
         <div class="cards" id="cards"></div>
 
-        <div id="ecPanel" style="display:none">
-          <h2 class="sec-title"><span data-i18n="ecTitle"></span>
-            <span class="hint" id="ecMeta"></span></h2>
+        <!-- 创作中心账号趋势（数据来源：TikTok 创作中心 /aweme/v2/data/insight/） -->
+        <div id="crPanel" style="display:none"></div>
+
+        <!-- AI 经营分析：抓到数据后自动生成，固定模板 + 对比期结合，不需要点击（Round 11） -->
+        <div id="aiBrief" class="ai-brief" style="display:none"></div>
+
+        <div id="ecPanel" style="display:none"></div>
+
+        <div id="pcPanel" style="display:none">
+          <h2 class="sec-title"><span data-i18n="pcTitle"></span>
+            <span class="hint" id="pcMeta"></span></h2>
           <div class="tbl-wrap ec-wrap">
             <table class="ec-table">
               <thead>
                 <tr>
                   <th><span data-i18n="ecMetric"></span></th>
-                  <th class="num"><span data-i18n="ecYes"></span></th>
-                  <th class="num"><span data-i18n="ecNo"></span></th>
-                  <th class="num"><span data-i18n="ecDiff"></span></th>
+                  <th class="num"><span data-i18n="pcCur"></span></th>
+                  <th class="num"><span data-i18n="pcCmp"></span></th>
+                  <th class="num"><span data-i18n="pcDiff"></span></th>
                 </tr>
               </thead>
-              <tbody id="ecRows"></tbody>
+              <tbody id="pcRows"></tbody>
             </table>
           </div>
         </div>
 
         <div class="res-tools">
           <div class="tabs" id="tabs"></div>
-          <input class="search" id="search" placeholder="搜索文案 / 话题…">
+          <!-- 搜索框：搜文案 / 账号 / vid，也接受直接粘贴视频链接（回车解析后进明细表） -->
+          <div class="search-wrap">
+            <input class="search" id="search" data-i18n-ph="searchPh">
+            <button type="button" id="dlResolveBtn2" class="search-btn" title=""></button>
+            <div class="search-hint" id="searchHint" style="display:none"></div>
+          </div>
           <div style="flex:1"></div>
           <div class="btn-row">
-            <button type="button" id="aiPeriodBtn" data-i18n="aiPeriod"></button>
             <button type="button" id="ecCompareBtn" data-i18n="ecCompare"></button>
-            <button type="button" id="grpBtn" data-i18n="grpToggle"></button>
+            <!-- 批量下载：点一下才进入「待选中」状态，此时才出现取消/下载 -->
+            <button type="button" id="dlBatchBtn" data-i18n="dlBatch"></button>
+            <span class="pick-bar" id="pickBar" style="display:none">
+              <span class="pick-n" id="pickCount"></span>
+              <button type="button" id="dlPickCancel" data-i18n="dlPickCancel"></button>
+              <button type="button" id="dlPickGo" class="primary" data-i18n="dlPickGo"></button>
+            </span>
             <button type="button" id="exportXlsx" class="primary" disabled data-i18n="downloadXlsx"></button>
             <button type="button" id="exportCsv" disabled data-i18n="downloadCsv"></button>
           </div>
         </div>
 
         <h2 class="sec-title" style="margin:0 0 10px"><span data-i18n="details">视频明细</span>
-          <span class="hint" id="tableMeta"></span></h2>
+          <span class="hint" id="tableMeta"></span>
+          <!-- 表头一键展开全部详情：列多时不必逐行点开 -->
+          <button type="button" id="expandAllBtn" class="mini-btn" data-i18n="expandAll">全部展开详情</button>
+        </h2>
 
         <div class="tbl-wrap">
           <table>
             <thead>
               <tr>
-                <th class="num" style="width:44px">#</th>
-                <th class="sortable" data-sort="account"><span data-i18n="colAccount"></span><span class="ar"></span></th>
-                <th class="sortable" data-sort="date"><span data-i18n="colDate"></span><span class="ar"></span></th>
-                <th class="sortable" data-sort="time"><span data-i18n="colTime"></span><span class="ar"></span></th>
+                <th class="ctr pick-col" style="width:28px"><input type="checkbox" id="rowSelAll" aria-label="select all"></th>
+                <th class="num" style="width:36px">#</th>
+                <th class="ctr cover-col" style="width:52px"><span data-i18n="colCover"></span></th>
                 <th><span data-i18n="colCaption"></span></th>
-                <th class="num sortable" data-sort="views"><span data-i18n="colViews"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="likes"><span data-i18n="colLikes"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="comments"><span data-i18n="colComments"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="shares"><span data-i18n="colShares"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="saves"><span data-i18n="colSaves"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="reposts"><span data-i18n="colReposts"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="inter"><span data-i18n="colEngage"></span><span class="ar"></span></th>
-                <th class="num sortable" data-sort="duration"><span data-i18n="colDuration"></span><span class="ar"></span></th>
-                <th class="ctr"><span data-i18n="colShopping"></span></th>
-                <th class="ctr"><span data-i18n="colDownload"></span></th>
-                <th></th>
+                <th class="sortable date-col" data-sort="date" style="width:88px"><span data-i18n="colDate"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="views" style="width:80px"><span data-i18n="colViews"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="likes" style="width:70px"><span data-i18n="colLikes"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="comments" style="width:70px"><span data-i18n="colComments"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="shares" style="width:70px"><span data-i18n="colShares"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="inter" style="width:78px"><span data-i18n="colEngage"></span><span class="ar"></span></th>
+                <th class="ctr" style="width:52px"><span data-i18n="colShopping"></span></th>
+                <th class="ctr" style="width:40px"><span data-i18n="colDownload"></span></th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -208,14 +258,44 @@
       </div>
       <div class="set-group">
         <div class="set-group-title" data-i18n="setStorageGroup"></div>
+        <!-- 下载目录：默认在应用数据目录下，允许用户手动修改（Round 6） -->
         <div class="si-row">
-          <input id="storageDir" class="si-select" style="flex:1;min-width:260px" placeholder="">
-          <button type="button" id="storageSave" class="btn-like">保存</button>
+          <button type="button" id="storagePick" class="si-select si-path" style="flex:1;min-width:260px;text-align:left"></button>
+          <input id="storageDir" class="si-select" style="display:none">
+          <button type="button" id="storageSave" class="btn-like" data-i18n="storageSave"></button>
+          <button type="button" id="storageReset" class="btn-like" data-i18n="storageReset"></button>
+          <button type="button" id="storageOpen" class="btn-like" data-i18n="storageOpen"></button>
         </div>
+        <div class="si-hint" data-i18n="storageAutoNote"></div>
+      </div>
+      <div class="set-group" id="aiGroup" style="display:none">
+        <div class="set-group-title" data-i18n="aiGroupTitle"></div>
+        <div class="si-row">
+          <input id="aiBase" class="si-select" style="flex:1;min-width:260px" data-i18n-ph="aiBase">
+        </div>
+        <div class="si-row">
+          <input id="aiKey" class="si-select" type="password" style="flex:1;min-width:200px" data-i18n-ph="aiKey">
+          <input id="aiModel" class="si-select" style="min-width:140px" data-i18n-ph="aiModel">
+        </div>
+        <div class="si-row">
+          <input id="aiVision" class="si-select" style="flex:1;min-width:160px" data-i18n-ph="aiVision">
+          <button type="button" id="aiSave" class="btn-like" data-i18n="storageSave"></button>
+          <button type="button" id="aiTest" class="btn-like" data-i18n="aiTest"></button>
+        </div>
+        <div class="si-status" id="aiStatus"></div>
       </div>
       <div class="set-group">
         <div class="set-group-title" data-i18n="setToolsGroup"></div>
         <div class="m-actions" id="toolActions"></div>
+      </div>
+      <div class="set-group">
+        <div class="set-group-title" data-i18n="upGroup"></div>
+        <div class="si-row">
+          <button type="button" id="upCheck" class="btn-like" data-i18n="upCheck"></button>
+          <button type="button" id="upInstall" class="btn-like primary" style="display:none" data-i18n="upInstall"></button>
+          <span class="si-status" id="upState" style="margin:0"></span>
+        </div>
+        <div class="si-hint" data-i18n="upHint"></div>
       </div>
       <div class="m-actions" style="margin-top:8px">
         <button type="button" id="modRefresh" data-i18n="modulesRefresh"></button>
@@ -262,12 +342,51 @@
 
 <!-- 登录小弹窗（应用内，非浏览器窗口） -->
 <div class="modal-backdrop" id="loginModal" style="display:none">
-  <div class="modal modal-sm" role="dialog" aria-modal="true">
+  <div class="modal modal-login" role="dialog" aria-modal="true">
     <div class="modal-head">
       <h2 id="loginTitle" data-i18n="loginTitle"></h2>
       <button type="button" class="modal-close" id="loginClose" aria-label="关闭">×</button>
     </div>
     <div class="modal-body" id="loginBody"></div>
+  </div>
+</div>
+
+<!-- 挂车对比（小框，按钮打开 —— 不再常驻主页） -->
+<div class="modal-backdrop" id="ecModal" style="display:none">
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 data-i18n="ecTitle"></h2>
+      <button type="button" class="modal-close" id="ecClose" aria-label="关闭">×</button>
+    </div>
+    <div class="tbl-wrap ec-wrap">
+      <table class="ec-table ec-table-sm">
+        <thead>
+          <tr>
+            <th><span data-i18n="ecMetric"></span></th>
+            <th class="num"><span data-i18n="ecYes"></span></th>
+            <th class="num"><span data-i18n="ecNo"></span></th>
+            <th class="num"><span data-i18n="ecDiff"></span></th>
+          </tr>
+        </thead>
+        <tbody id="ecRows"></tbody>
+      </table>
+    </div>
+    <div class="si-hint" id="ecMeta"></div>
+  </div>
+</div>
+
+<!-- 卖家数据手动导入（上传 xlsx） -->
+<div class="modal-backdrop" id="sellerModal" style="display:none">
+  <div class="modal modal-sm" role="dialog" aria-modal="true">
+    <div class="modal-head">
+      <h2 data-i18n="sellerManual"></h2>
+      <button type="button" class="modal-close" id="sellerClose" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="si-hint" data-i18n="sellerUpload"></div>
+      <input type="file" id="sellerFile" accept=".xlsx,.xls" class="si-select" style="margin-top:8px">
+      <div class="si-status" id="sellerStatus"></div>
+    </div>
   </div>
 </div>
 
