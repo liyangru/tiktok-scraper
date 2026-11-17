@@ -1,6 +1,6 @@
 {
   "name": "tiktok-scraper",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "description": "TikTok 数据分析（AI 解读 / 脚本复刻 / 品牌分析）· 无浏览器 · 无登录 · 极简版",
   "author": "TikTok Scraper",

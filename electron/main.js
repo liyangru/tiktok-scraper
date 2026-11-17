@@ -191,9 +191,10 @@ function createWindow(port) {
     if (!details || details.reason === 'clean-exit') return;
     try { win.webContents.reload(); } catch (_) {}
   });
-  console.log('[app] loading http://127.0.0.1:' + port + '/');
+  const q = process.env.TT_URL_QUERY ? ('?' + process.env.TT_URL_QUERY.replace(/^\?/, '')) : '';
+  console.log('[app] loading http://127.0.0.1:' + port + '/' + q);
   win
-    .loadURL(`http://127.0.0.1:${port}/`)
+    .loadURL(`http://127.0.0.1:${port}/${q}`)
     .then(() => console.log('[app] loadURL resolved'))
     .catch((e) => console.log('[app] loadURL rejected:', e && e.message));
 
@@ -244,7 +245,8 @@ function createWindow(port) {
   // 调试用：TT_SHOT=<png路径> 时，页面加载后截图并退出（用于自动化验证界面）
   if (process.env.TT_SHOT) {
     win.webContents.once('did-finish-load', async () => {
-      await new Promise((r) => setTimeout(r, 1500));
+      const delay = Number(process.env.TT_SHOT_DELAY || 1500);
+      await new Promise((r) => setTimeout(r, delay));
       const img = await win.webContents.capturePage();
       require('fs').writeFileSync(process.env.TT_SHOT, img.toPNG());
       console.log('[app] shot saved:', process.env.TT_SHOT);

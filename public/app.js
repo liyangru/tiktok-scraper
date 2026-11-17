@@ -218,6 +218,9 @@ function init() {
   initCompare();
   checkHealth();
   loadHistory();
+  // URL 带 ?job=<id> 时自动载入该任务（回看/分享/截图验收用）
+  const qJob = new URLSearchParams(location.search).get('job');
+  if (qJob) { state.jobId = qJob; poll(); }
 }
 
 /* ================= 对比日期（小窗，默认同期天数） ================= */
@@ -686,6 +689,35 @@ function sortRows(rows) {
    条均互动（每条视频的互动量）都在列。对比和 AI 分析共用这套口径。 */
 const EC_KEYS = ['n', 'tv', 'avg', 'med', 'max', 'avgLikes', 'avgComments', 'avgShares', 'avgSaves', 'avgReposts', 'avgDuration', 'inter', 'avgInter'];
 
+/** 数据分布直方图：把一组数值分桶，返回 [{lo,hi,n}] —— 概览卡片的分布条用 */
+function histogram(values, bins = 8) {
+  const nums = values.filter((x) => typeof x === 'number' && isFinite(x));
+  if (!nums.length) return [];
+  const max = Math.max(...nums), min = Math.min(...nums);
+  if (max === min) return [{ lo: min, hi: max, n: nums.length }];
+  const step = (max - min) / bins;
+  const out = Array.from({ length: bins }, (_, i) => ({ lo: min + step * i, hi: min + step * (i + 1), n: 0 }));
+  nums.forEach((v) => { const k = Math.min(bins - 1, Math.floor((v - min) / step)); out[k].n++; });
+  return out;
+}
+
+/** 迷你分布条：纯 CSS 高度条，展示一组数值的形状（不做成假折线） */
+function miniBars(values, bins = 10) {
+  const hs = histogram(values, bins);
+  if (!hs.length) return '';
+  const peak = Math.max(...hs.map((b) => b.n)) || 1;
+  return `<div class="mini-bars" aria-hidden="true">${hs
+    .map((b) => `<i style="height:${Math.max(6, (b.n / peak) * 100).toFixed(0)}%"><em></em></i>`)
+    .join('')}</div>`;
+}
+
+/** 按日期聚合播放量（概览卡片迷你趋势用） */
+function dailySeries(rows) {
+  const m = {};
+  rows.forEach((r) => { if (r.date) m[r.date] = (m[r.date] || 0) + (Number(r.views) || 0); });
+  return Object.keys(m).sort().map((d) => ({ d, v: m[d] }));
+}
+
 function ecAgg(rows) {
   const n = rows.length;
   const sum = (k) => rows.reduce((s, r) => s + (Number(r[k]) || 0), 0);
@@ -725,7 +757,7 @@ function renderEc(rows) {
       <td>${esc(labels[i] || k)}</td>
       <td class="num">${isPct ? (a * 100).toFixed(2) + '%' : fmt(a)}</td>
       <td class="num">${isPct ? (b * 100).toFixed(2) + '%' : fmt(b)}</td>
-      <td class="num ${cls}">${diff === null ? '—' : (diff >= 0 ? '+' : '') + (diff * 100).toFixed(1) + '%'}</td>
+      <td class="num ${cls}">${diff === null ? '—' : `<span class="diff-bar ${cls}" style="--w:${Math.min(100, Math.abs(diff) * 100).toFixed(0)}%">${(diff >= 0 ? '+' : '') + (diff * 100).toFixed(1)}%</span>`}</td>
     </tr>`;
   }).join('');
   return true;
@@ -760,7 +792,7 @@ function renderPeriodCompare() {
       <td>${esc(labels[i] || k)}</td>
       <td class="num">${isPct ? (a * 100).toFixed(2) + '%' : fmt(a)}</td>
       <td class="num">${isPct ? (b * 100).toFixed(2) + '%' : fmt(b)}</td>
-      <td class="num ${cls}">${diff === null ? '—' : (diff >= 0 ? '+' : '') + (diff * 100).toFixed(1) + '%'}</td>
+      <td class="num ${cls}">${diff === null ? '—' : `<span class="diff-bar ${cls}" style="--w:${Math.min(100, Math.abs(diff) * 100).toFixed(0)}%">${(diff >= 0 ? '+' : '') + (diff * 100).toFixed(1)}%</span>`}</td>
     </tr>`;
   }).join('');
 }
@@ -856,16 +888,24 @@ function renderResults() {
   );
 
   $('#cards').innerHTML = state.summary
-    .map(
-      (a) => `<div class="card">
-      <div class="k">@${esc(a.handle)}${a.nickname ? ' · ' + esc(a.nickname) : ''}
-        <button type="button" class="card-dl" data-h="${esc(a.handle)}" title="${esc(t('cardDownload'))}">⤓</button></div>
-      <div class="v">${fmt(a.n)} <span style="font-size:12px;font-weight:400;color:#7f7f7f">${esc(t('items'))}</span></div>
-      <div class="m">${esc(t('views'))} ${fmt(a.tv)} · ${esc(t('avgViews'))} ${fmt(a.avg)}<br>
-      ${esc(t('maxViews'))} ${fmt(a.max)} · ${esc(t('saves'))} ${fmt(a.saves)}<br>
-      ${esc(t('colEngage'))} ${(a.inter * 100).toFixed(2)}%${a.stats && a.stats.followerCount ? ' · ' + esc(t('followers')) + ' ' + fmt(a.stats.followerCount) : ''}</div>
-    </div>`
-    )
+    .map((a, idx) => {
+      const mine = state.rows.filter((r) => r.account === a.handle);
+      const daily = dailySeries(mine);
+      const spark = daily.length >= 2
+        ? trendLine(daily, 240, 56, true)
+        : miniBars(mine.map((r) => r.views));
+      const ecN = mine.filter((r) => r.isEC).length;
+      const ecPct = mine.length ? ((ecN / mine.length) * 100).toFixed(0) : '0';
+      return `<div class="card card-chart" style="animation-delay:${(idx * 45).toFixed(0)}ms">
+        <div class="k">@${esc(a.handle)}${a.nickname ? ' · ' + esc(a.nickname) : ''}
+          <button type="button" class="card-dl" data-h="${esc(a.handle)}" title="${esc(t('cardDownload'))}">⤓</button></div>
+        <div class="v">${fmt(a.n)} <span style="font-size:12px;font-weight:400;color:#7f7f7f">${esc(t('items'))}</span></div>
+        <div class="card-spark">${spark}</div>
+        <div class="m">${esc(t('views'))} ${fmt(a.tv)} · ${esc(t('avgViews'))} ${fmt(a.avg)}<br>
+        ${esc(t('maxViews'))} ${fmt(a.max)} · ${esc(t('saves'))} ${fmt(a.saves)}<br>
+        ${esc(t('colEngage'))} ${(a.inter * 100).toFixed(2)}% · ${esc(t('yesShort'))} ${ecPct}%${a.stats && a.stats.followerCount ? ' · ' + esc(t('followers')) + ' ' + fmt(a.stats.followerCount) : ''}</div>
+      </div>`;
+    })
     .join('');
   $$('#cards .card-dl').forEach((b) =>
     b.addEventListener('click', (e) => {
@@ -982,27 +1022,82 @@ document.addEventListener('DOMContentLoaded', init);
  *      并标注数据来源（TikTok 快照 / 创作中心）。
  *      ⚠️ 绝不把「播放」和「完播率」塞进同一个纵轴 —— 那样得到的是一条假趋势。
  */
-function trendLine(pts, w = 300, h = 40) {
+function trendLine(pts, w = 320, h = 72, compact = false) {
   const vals = pts.map((p) => p.v);
   if (vals.length < 2) return '';
-  const max = Math.max(...vals);
-  const min = Math.min(...vals);
-  const span = max - min || 1;
-  const xy = vals.map((v, i) => [
-    (i / (vals.length - 1)) * (w - 10) + 5,
-    h - 7 - ((v - min) / span) * (h - 14),
-  ]);
-  const path = xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const dots = xy
-    .map(([x, y]) => `<circle class="spark-dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="1.7"></circle>`)
-    .join('');
-  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    <line class="spark-axis" x1="5" y1="${h - 7}" x2="${w - 5}" y2="${h - 7}"></line>
-    <polyline fill="none" stroke="currentColor" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"
-      vector-effect="non-scaling-stroke" points="${path}"></polyline>
+  // 唯一 ID：同页多张图互不串（渐变引用按 id 隔离）
+  const uid = 'sp' + Math.random().toString(36).slice(2, 9);
+  const labels = pts.map((p) => (p && p.d) || '');
+  const hasLabels = labels.every(Boolean);
+
+  // 自适应画布：宽度撑满容器，viewBox 保持坐标稳定
+  const padL = 6, padR = 8, padT = 10, padB = 16;
+  const iw = w - padL - padR, ih = h - padT - padB;
+  let max = Math.max(...vals), min = Math.min(...vals);
+  if (max === min) { const pad = Math.abs(max) * 0.1 || 1; max += pad; min -= pad; }
+  const span = max - min;
+  const X = (i) => padL + (i / (vals.length - 1)) * iw;
+  const Y = (v) => padT + ih - ((v - min) / span) * ih;
+
+  // Catmull-Rom → 三次贝塞尔：平滑但不失真（不过度甩出数据范围）
+  let line = `M ${X(0).toFixed(1)} ${Y(vals[0]).toFixed(1)}`;
+  for (let i = 0; i < vals.length - 1; i++) {
+    const p0 = [X(Math.max(0, i - 1)), Y(vals[Math.max(0, i - 1)])];
+    const p1 = [X(i), Y(vals[i])];
+    const p2 = [X(i + 1), Y(vals[i + 1])];
+    const p3 = [X(Math.min(vals.length - 1, i + 2)), Y(vals[Math.min(vals.length - 1, i + 2)])];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    line += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+  }
+  const area = `${line} L ${X(vals.length - 1).toFixed(1)} ${(padT + ih).toFixed(1)} L ${padL} ${(padT + ih).toFixed(1)} Z`;
+
+  // 水平网格：3 条 + 右侧刻度（首/中/末值）
+  const gridN = compact ? 2 : 3;
+  let grid = '', yTicks = '';
+  for (let g = 0; g <= gridN; g++) {
+    const y = padT + (ih / gridN) * g;
+    grid += `<line class="sp-grid" x1="${padL}" y1="${y.toFixed(1)}" x2="${(w - padR).toFixed(1)}" y2="${y.toFixed(1)}"></line>`;
+    const gv = max - (span / gridN) * g;
+    const gtxt = gv >= 1000 ? (gv / 1000).toFixed(1) + 'k' : gv.toFixed(gv < 10 ? 1 : 0);
+    if (!compact) yTicks += `<text class="sp-tick" x="${(w - padR + 1).toFixed(1)}" y="${(y + 3).toFixed(1)}">${esc(gtxt)}</text>`;
+  }
+
+  // X 轴日期：首 / 中 / 末 三点，避免拥挤
+  const xLabels = [];
+  const pick = [0, Math.floor((labels.length - 1) / 2), labels.length - 1];
+  pick.forEach((i, k) => {
+    if (k > 0 && pick[k - 1] === i) return;
+    const anchor = i === 0 ? 'start' : i === labels.length - 1 ? 'end' : 'middle';
+    xLabels.push(`<text class="sp-xlab" x="${X(i).toFixed(1)}" y="${(h - 2).toFixed(1)}" text-anchor="${anchor}">${esc(labels[i])}</text>`);
+  });
+
+  // 数据点：少点全画（≤12），多点只画末点 + 极值点，避免糊成一片
+  let dots = '';
+  const lastIdx = vals.length - 1;
+  const maxIdx = vals.indexOf(Math.max(...vals));
+  const minIdx = vals.indexOf(Math.min(...vals));
+  const dotIdx = vals.length <= 12 ? vals.map((_, i) => i) : [...new Set([0, lastIdx, maxIdx, minIdx])];
+  dotIdx.forEach((i) => {
+    const special = i === lastIdx ? ' sp-last' : i === maxIdx ? ' sp-max' : i === minIdx ? ' sp-min' : '';
+    const valTxt = labels[i] ? `${labels[i]} · ${vals[i] >= 1000 ? fmt(vals[i]) : vals[i]}` : String(vals[i]);
+    dots += `<circle class="sp-dot${special}" cx="${X(i).toFixed(1)}" cy="${Y(vals[i]).toFixed(1)}" r="${i === lastIdx ? 3 : 2}"><title>${esc(valTxt)}</title></circle>`;
+  });
+
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" role="img">
+    <defs><linearGradient id="${uid}" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="currentColor" stop-opacity=".16"></stop>
+      <stop offset="100%" stop-color="currentColor" stop-opacity="0"></stop>
+    </linearGradient></defs>
+    ${grid}
+    <path class="sp-area" d="${area}" fill="url(#${uid})"></path>
+    <path class="sp-line" pathLength="1" d="${line}"></path>
     ${dots}
+    ${yTicks}
+    ${hasLabels && !compact ? xLabels.join('') : ''}
   </svg>`;
 }
+
 
 /**
  * 逐条视频的趋势里展示哪些指标、各自来自哪个平台。

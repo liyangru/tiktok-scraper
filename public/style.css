@@ -978,3 +978,46 @@ label.dl-item .dl-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow:
 /* 左栏抓取输入区隐藏：本地数据模式不再填用户名抓取 */
 #handles, #quickAcc, #startBtn + #stopBtn { display: none !important; }
 label.fld:has(#handles) { display: none !important; }
+
+
+/* ================= 2.1 图表升级：平滑曲线 / 面积 / 网格 / 刻度 / 动效 ================= */
+.spark { display: block; width: 100%; height: auto; overflow: visible; }
+.spark .sp-grid { stroke: var(--line-soft); stroke-width: 1; }
+.spark .sp-line {
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linejoin: round; stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: sp-draw 1.1s var(--ease) forwards;
+}
+.spark .sp-area { opacity: 0; animation: sp-fade .8s .35s var(--ease) forwards; }
+.spark .sp-dot { fill: var(--panel); stroke: currentColor; stroke-width: 1.4; transition: r .16s var(--ease); }
+.spark .sp-dot:hover { r: 4; }
+.spark .sp-dot.sp-last { fill: currentColor; stroke: var(--panel); stroke-width: 2; transform-box: fill-box; transform-origin: center; animation: sp-pulse 2.4s var(--ease) infinite; }
+.spark .sp-dot.sp-max { fill: currentColor; }
+.spark .sp-tick { font-size: 8px; fill: var(--ink-4); font-variant-numeric: tabular-nums; }
+.spark .sp-xlab { font-size: 8px; fill: var(--ink-3); }
+@keyframes sp-draw { to { stroke-dashoffset: 0; } }
+@keyframes sp-fade { to { opacity: 1; } }
+@keyframes sp-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .55; } }
+
+/* 概览卡片内的迷你图 + 入场节奏 */
+.card-chart { animation: rise .5s var(--ease) both; }
+.card-spark { height: 56px; margin: 10px -4px 10px; color: var(--ink-2); position: relative; }
+.card-spark .spark { height: 56px; }
+.card-spark .sp-tick, .card-spark .sp-xlab { display: none; }
+.mini-bars { display: flex; align-items: flex-end; gap: 3px; height: 100%; }
+.mini-bars i { flex: 1; display: block; background: var(--line); border-radius: 2px 2px 0 0; position: relative; overflow: hidden; }
+.mini-bars i em { position: absolute; inset: auto 0 0 0; height: 100%; background: var(--ink-3); border-radius: 2px 2px 0 0; transform-origin: bottom; animation: sp-rise .6s var(--ease) both; }
+@keyframes sp-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+/* 对比表差异列：横条长度表达幅度，黑白灰不引入红绿 */
+.diff-bar { display: inline-block; position: relative; padding: 2px 7px; border-radius: var(--r-pill); font-variant-numeric: tabular-nums; }
+.diff-bar::before {
+  content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: var(--w, 0);
+  background: var(--surface-2); border-radius: var(--r-pill); z-index: 0;
+}
+.diff-bar.pos { font-weight: 700; }
+.diff-bar.pos::before { background: #e8e8e8; }
+.diff-bar.neg { color: var(--ink-3); }
