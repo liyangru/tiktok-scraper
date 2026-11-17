@@ -51,3 +51,6 @@ ui-profile/
 # 构建产物：旧版安装包目录含 234MB exe，绝不入库
 apps/
 
+
+# ffmpeg binary (~100MB, CI downloads at build time, never in git)
+vendor/ffmpeg.exe

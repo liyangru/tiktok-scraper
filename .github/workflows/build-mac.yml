@@ -71,6 +71,15 @@ jobs:
             PLAYWRIGHT_BROWSERS_PATH="$PWD/.mac-browsers" node scripts/make-icon.js
           fi
 
+      - name: 准备 ffmpeg（AI 复刻脚本抽帧用）
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+          brew install ffmpeg 2>/dev/null || true
+          FFMPEG="$(command -v ffmpeg || true)"
+          if [ -n "$FFMPEG" ]; then cp "$FFMPEG" vendor/ffmpeg.exe; fi
+          ls -lh vendor/ffmpeg.exe 2>/dev/null || echo "ffmpeg 走 PATH 兜底"
+
       - name: electron-builder 打包
         run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never -c.directories.output=release-mac
 

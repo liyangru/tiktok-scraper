@@ -43,6 +43,16 @@ jobs:
       - name: 安装依赖
         run: npm install --no-audit --no-fund
 
+      - name: 准备 ffmpeg（AI 复刻脚本抽帧用）
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+          curl -L -o /tmp/ff.zip "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+          7z x -y /tmp/ff.zip -o/tmp/ff >/dev/null
+          cp "$(find /tmp/ff -name ffmpeg.exe | head -1)" vendor/ffmpeg.exe
+          ls -lh vendor/ffmpeg.exe
+
       - name: 准备 Windows 版 Chromium 载荷（裁剪版）
         shell: bash
         run: |
@@ -100,6 +110,15 @@ jobs:
 
       - name: 安装依赖
         run: npm install --no-audit --no-fund
+
+      - name: 准备 ffmpeg（AI 复刻脚本抽帧用）
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+          brew install ffmpeg 2>/dev/null || true
+          FFMPEG="$(command -v ffmpeg || true)"
+          if [ -n "$FFMPEG" ]; then cp "$FFMPEG" vendor/ffmpeg.exe; fi
+          ls -lh vendor/ffmpeg.exe 2>/dev/null || echo "ffmpeg 走 PATH 兜底"
 
       - name: 准备 macOS 版 Chromium 载荷（裁剪版）
         run: |
