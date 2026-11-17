@@ -48,5 +48,6 @@ crash.log
 # 鐣岄潰绐楀彛鐨勬祻瑙堝櫒 profile锛堣繍琛屼骇鐗╋級
 ui-profile/
 
+# 构建产物：旧版安装包目录含 234MB exe，绝不入库
 apps/
 

@@ -1,14 +1,14 @@
-# TikTokScraper v2.0.1 · macOS 安装指令（复制整段给 AI 执行）
+# TikTokScraper v2.0.2 · macOS 安装指令（复制整段给 AI 执行）
 
-你现在要在 Mac 上帮我安装 TikTokScraper v2.0.1 极简分析版。严格按下面的步骤执行，每步给出实际命令和输出，失败就贴原始报错并停止，不要猜测。
+你现在要在 Mac 上帮我安装 TikTokScraper v2.0.2 极简分析版。严格按下面的步骤执行，每步给出实际命令和输出，失败就贴原始报错并停止，不要猜测。
 
 ## 环境前提
 - 芯片判断：先确认是 Apple Silicon（M 系列）还是 Intel，两者包不同
-- 版本：v2.0.1（2026-11-17）
+- 版本：v2.0.2（2026-11-17）
 - 最低系统：macOS 13.0（Ventura）及以上
 - 官方仓库：https://github.com/liyangru/tiktok-scraper
-- arm64 包（M 系列）：https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.1/TikTokScraper-2.0.1-arm64-mac.zip
-- x64 包（Intel）：https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.1/TikTokScraper-2.0.1-x64-mac.zip
+- arm64 包（M 系列）：https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-arm64-mac.zip
+- x64 包（Intel）：https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-x64-mac.zip
 
 ## 步骤
 
@@ -22,29 +22,29 @@ uname -m
 ### 2A. 下载 arm64 包（M 系列）
 ```bash
 mkdir -p ~/Downloads/TikTokScraper-install && cd ~/Downloads/TikTokScraper-install
-curl -L -o TikTokScraper-2.0.1-arm64-mac.zip \
-  "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.1/TikTokScraper-2.0.1-arm64-mac.zip"
-ls -lh TikTokScraper-2.0.1-arm64-mac.zip
+curl -L -o TikTokScraper-2.0.2-arm64-mac.zip \
+  "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-arm64-mac.zip"
+ls -lh TikTokScraper-2.0.2-arm64-mac.zip
 ```
 判定：约 129 MB。
 
 ### 2B. 下载 x64 包（Intel）
 ```bash
 mkdir -p ~/Downloads/TikTokScraper-install && cd ~/Downloads/TikTokScraper-install
-curl -L -o TikTokScraper-2.0.1-x64-mac.zip \
-  "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.1/TikTokScraper-2.0.1-x64-mac.zip"
-ls -lh TikTokScraper-2.0.1-x64-mac.zip
+curl -L -o TikTokScraper-2.0.2-x64-mac.zip \
+  "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-x64-mac.zip"
+ls -lh TikTokScraper-2.0.2-x64-mac.zip
 ```
 判定：约 133 MB。
 
 ### 3. 解压
 arm64：
 ```bash
-unzip -o TikTokScraper-2.0.1-arm64-mac.zip
+unzip -o TikTokScraper-2.0.2-arm64-mac.zip
 ```
 x64：
 ```bash
-unzip -o TikTokScraper-2.0.1-x64-mac.zip
+unzip -o TikTokScraper-2.0.2-x64-mac.zip
 ```
 判定：得到 `TikTokScraper.app`。
 
@@ -63,7 +63,7 @@ file TikTokScraper.app/Contents/MacOS/TikTokScraper
 /usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" \
   TikTokScraper.app/Contents/Info.plist
 ```
-判定：版本 `2.0.1`，最低系统 `13.0`。
+判定：版本 `2.0.2`，最低系统 `13.0`。
 
 ### 6. 去掉隔离属性并 ad-hoc 重签名（关键，否则打不开）
 包在 CI 里已做 ad-hoc 签名，但下载带 quarantine，需清除：
@@ -91,7 +91,7 @@ pgrep -fl TikTokScraper
 
 ### 9. 完成标准
 - 芯片与包架构一致（M→arm64，Intel→x64）
-- 版本 2.0.1，最低系统 13.0
+- 版本 2.0.2，最低系统 13.0
 - 签名校验 SIGN_OK
 - 已装入 /Applications 并能启动
 - 应用显示「本地数据模式 · 无浏览器」

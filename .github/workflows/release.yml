@@ -1,10 +1,21 @@
-# 一键出全平台安装包并发布 GitHub Release（2.0 极简分析版）
+# 一键出全平台安装包并发布 GitHub Release
 #
-# 2.0 起无浏览器载荷：CI 不再下载 Chromium、不再跑 build-payload.js。
-# 构建只需 npm install + 打模块包 + electron-builder。
+# 触发方式：
+#   1. 打 tag 推送：  git tag v1.0.0 && git push origin v1.0.0
+#   2. 或在 Actions 页手动 Run workflow（只构建 + 传 artifact，不发布 Release）
 #
-# 触发：打 tag 推送（git tag v2.0.0 && git push origin v2.0.0）→ 自动构建并发布 Release；
-#       或在 Actions 页手动 Run workflow（只构建 + 传 artifact，不发布）。
+# 产出：
+#   Windows  TikTokScraper-<版本>.exe   （Electron 便携版，主推）
+#   macOS    TikTokScraper-<版本>-arm64-mac.zip（Apple Silicon）
+#            TikTokScraper-<版本>-x64-mac.zip  （Intel）
+#   本地/服务器部署包
+#            tiktok-scraper-server-<版本>.tar.gz（源码 + 一键启动脚本）
+#
+# 说明：
+#   - 所有平台的浏览器（Chromium）都在 CI 里现下现打，并跑一遍 scripts/build-payload.js
+#     裁掉用不到的部分，所以仓库里不需要放大文件。
+#   - 模块包（modules-dist）随安装包一起分发，但**默认全部是「未安装」状态**：
+#     用户在设置里点「下载」才会真正安装，符合「按需装配」。
 
 name: release
 
@@ -17,37 +28,61 @@ permissions:
   contents: write
 
 jobs:
+  # ---------------------------------------------------------------- Windows
   win:
     name: Windows
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+
       - name: 安装依赖
         run: npm install --no-audit --no-fund
-      - name: 打模块包（ai-analyst）
+
+      - name: 准备 Windows 版 Chromium 载荷（裁剪版）
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 与实测抓通的版本对齐：playwright chromium-1248 / Chrome for Testing 156.0.8078.4
+          export PLAYWRIGHT_BROWSERS_PATH="$PWD/.win-browsers"
+          npx playwright install chromium
+          CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
+          [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
+          tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
+          echo "原始载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+          # 裁掉多语言包 / WebGPU·SwiftShader / 安装器 / PWA 启动器等确实用不到的部分
+          node scripts/build-payload.js
+          rm -f browser-payload.tar.gz.bak
+          echo "裁剪后: $(du -sh browser-payload.tar.gz | cut -f1)"
+
+      - name: 打模块包（默认全部「未安装」，用户点下载才装）
         run: node scripts/build-modules.js --local
-      - name: 构建 Electron 安装包（portable + nsis）
-        run: npx electron-builder --win --publish never
+
+      - name: 构建 Electron 便携版
+        run: npx electron-builder --win portable --publish never
+
       - name: 汇总产物
         shell: bash
         run: |
           mkdir -p out
           cp release/*.exe out/
           ls -la out/
+
       - uses: actions/upload-artifact@v7
         with:
           name: win
           path: out/*
           if-no-files-found: error
 
+  # ------------------------------------------------------------------ macOS
   mac:
     name: macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -58,15 +93,33 @@ jobs:
             runner: macos-15-intel
     steps:
       - uses: actions/checkout@v7
+
       - uses: actions/setup-node@v7
         with:
           node-version: '22'
+
       - name: 安装依赖
         run: npm install --no-audit --no-fund
+
+      - name: 准备 macOS 版 Chromium 载荷（裁剪版）
+        run: |
+          set -euo pipefail
+          export PLAYWRIGHT_BROWSERS_PATH="$PWD/.mac-browsers"
+          npx playwright install chromium
+          CHR="$(ls -d "$PLAYWRIGHT_BROWSERS_PATH"/chromium-* | head -1)"
+          [ -n "$CHR" ] || { echo "chromium 下载失败"; exit 1; }
+          tar -czf browser-payload.tar.gz -C "$PLAYWRIGHT_BROWSERS_PATH" "$(basename "$CHR")"
+          echo "原始载荷: $(du -sh browser-payload.tar.gz | cut -f1)"
+          node scripts/build-payload.js
+          rm -f browser-payload.tar.gz.bak
+          echo "裁剪后: $(du -sh browser-payload.tar.gz | cut -f1)"
+
       - name: 打模块包
         run: node scripts/build-modules.js --local
+
       - name: electron-builder 打包
         run: npx electron-builder --mac zip --${{ matrix.arch }} --publish never -c.directories.output=release-mac
+
       - name: ad-hoc 签名（Apple Silicon 必需）
         run: |
           set -euo pipefail
@@ -75,18 +128,21 @@ jobs:
             codesign --force --deep --sign - "$app"
             echo "已签名: $app"
           done
+
       - uses: actions/upload-artifact@v7
         with:
           name: mac-${{ matrix.arch }}
           path: release-mac/*.zip
           if-no-files-found: error
 
+  # --------------------------------------------------- 本地 / 服务器部署包
   server-bundle:
     name: 部署包
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
+
       - name: 打包源码 + 启动脚本
         run: |
           set -euo pipefail
@@ -94,80 +150,119 @@ jobs:
           [ -n "$VER" ] || VER="dev"
           PKG="tiktok-scraper-server-${VER}"
           rm -rf "/tmp/${PKG}" && mkdir -p "/tmp/${PKG}"
+          # 只带源码，不带 node_modules / 构建产物
           tar -cf - --exclude='./node_modules' --exclude='./dist' --exclude='./release*' \
                    --exclude='./.git' --exclude='*.tar.gz' . | tar -xf - -C "/tmp/${PKG}"
           cat > "/tmp/${PKG}/start.sh" <<'EOF'
           #!/usr/bin/env bash
+          # 本地 / 服务器一键启动
           set -e
           cd "$(dirname "$0")"
           [ -d node_modules ] || npm install --no-audit --no-fund
+          # 首次运行若要用自带浏览器（而不是系统 Chrome），先下载一份：
+          #   npx playwright install chromium
           exec node server.js
           EOF
           chmod +x "/tmp/${PKG}/start.sh"
           tar -czf "${PKG}.tar.gz" -C /tmp "${PKG}"
           ls -la "${PKG}.tar.gz"
+
       - uses: actions/upload-artifact@v7
         with:
           name: server-bundle
           path: tiktok-scraper-server-*.tar.gz
           if-no-files-found: error
 
+  # --------------------------------------------------------------- Release
   release:
     name: 发布 Release
     runs-on: ubuntu-latest
     needs: [win, mac, server-bundle]
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: assets
           merge-multiple: true
+
       - name: 列出资产
         run: ls -la assets/
+
       - name: 生成 Release 说明（从 CHANGELOG.md 抽取本版段落）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"; VER="${TAG#v}"
-          mkdir -p /tmp/rel; NOTES=/tmp/rel/notes.md; : > "$NOTES"
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+          mkdir -p /tmp/rel
+          NOTES=/tmp/rel/notes.md
+          : > "$NOTES"
+
+          # 抽 CHANGELOG 里 "## [<版本>]" 到下一个 "## " 之间的内容
           if [ -f CHANGELOG.md ]; then
-            awk -v v="$VER" 'index($0, "## [" v "]") == 1 { f = 1; next } f && /^## / { exit } f { print }' CHANGELOG.md > "$NOTES" || true
+            awk -v v="$VER" '
+              index($0, "## [" v "]") == 1 { f = 1; next }
+              f && /^## / { exit }
+              f { print }
+            ' CHANGELOG.md > "$NOTES" || true
           fi
+
+          # 抽不到就回退成按 commit 自动生成
           if [ ! -s "$NOTES" ]; then
-            echo "> 本版未在 CHANGELOG.md 中找到 \`## [$VER]\` 条目，按 commit 自动生成。"
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" -f tag_name="$TAG" --jq '.body' >> "$NOTES" || true
+            echo "> ⚠️ 本版未在 CHANGELOG.md 中找到 \`## [$VER]\` 条目，以下按 commit 自动生成。"
+            echo ""
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+              -f tag_name="$TAG" --jq '.body' >> "$NOTES" || true
           fi
+
+          echo "--- 抽取到的说明 ---"
           cat "$NOTES"
+
       - name: 创建 Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"; VER="${TAG#v}"
+          TAG="${GITHUB_REF_NAME}"
+          VER="${TAG#v}"
+
+          # 下载表放最前面（方便直接用），下面接 CHANGELOG 里抽出来的本版变更
           {
             echo "## 下载"
             echo ""
             echo "| 平台 | 文件 | 说明 |"
             echo "|---|---|---|"
-            echo "| Windows | \`TikTokScraper-${VER}-setup.exe\` | 安装版 |"
-            echo "| Windows | \`TikTokScraper-${VER}-portable.exe\` | 免安装便携版 |"
-            echo "| macOS Apple Silicon | \`TikTokScraper-${VER}-arm64-mac.zip\` | M 系列 |"
-            echo "| macOS Intel | \`TikTokScraper-${VER}-x64-mac.zip\` | Intel |"
-            echo "| 本地 / 服务器 | \`tiktok-scraper-server-${VER}.tar.gz\` | 源码 + start.sh |"
+            echo "| Windows | \`TikTokScraper-${VER}.exe\` | Electron 桌面应用，双击即用 |"
+            echo "| macOS Apple Silicon | \`TikTokScraper-${VER}-arm64-mac.zip\` | M 系列芯片 |"
+            echo "| macOS Intel | \`TikTokScraper-${VER}-x64-mac.zip\` | Intel 芯片 |"
+            echo "| 本地 / 服务器 | \`tiktok-scraper-server-${VER}.tar.gz\` | 源码 + \`start.sh\`，需 Node 18+ |"
             echo ""
-            echo "**2.0 极简分析版**：无浏览器抓取、无登录、无 Chromium/ffmpeg 载荷，安装包约 100MB。"
-            echo "数据来源为本地导入；保留 AI 分析、Excel/CSV 报表、三语界面。"
-            echo "首次打开 macOS 版若提示无法验证开发者：右键 → 打开。"
+            echo "所有发行版都**自带浏览器**：不依赖系统 Chrome / Edge，不会打开系统默认浏览器，"
+            echo "运行时也不联网下载任何东西。功能以**模块**方式提供，默认全部未安装，"
+            echo "在「设置」里点「下载」即可装（装完重启应用生效）。"
+            echo ""
+            echo "### 首次运行"
+            echo ""
+            echo "- **Windows**：双击 exe。首次启动会把自带 Chromium 解压到应用数据目录（约 330MB，几秒），之后秒开。"
+            echo "- **macOS**：解压后把 \`.app\` 拖进「应用程序」。未做 Apple 公证，首次打开请**右键 → 打开**，或执行 \`xattr -dr com.apple.quarantine /Applications/TikTokScraper.app\`"
+            echo "- **服务器**：解压后 \`./start.sh\`。"
             echo ""
             echo "---"
             echo ""
             echo "## 本版更新"
             echo ""
             cat /tmp/rel/notes.md
+            echo ""
+            echo "---"
+            echo ""
+            echo "完整更新日志见 [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md)。"
           } > /tmp/rel/final.md
-          gh release create "$TAG" --repo "${GITHUB_REPOSITORY}" \
-            --title "TikTokScraper ${TAG} · 极简分析版" \
-            --notes-file /tmp/rel/final.md assets/*
+
+          gh release create "$TAG" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "TikTok 多账号数据抓取 ${TAG}" \
+            --notes-file /tmp/rel/final.md \
+            assets/*
+
           echo "Release 已发布: ${GITHUB_REPOSITORY}/releases/tag/${TAG}"

@@ -5,7 +5,7 @@
  *   - 无控制台窗口
  *   - 无浏览器外壳，也不会出现 "Chrome 测试版" 提示横幅
  *   - 单实例；关窗即退出；可反复打开
- *   - 数据分析在 Electron 自身进程完成，无浏览器依赖
+ *   - 抓取仍用自带 Chromium（无头），界面用 Electron 自己的窗口
  */
 const { app, BrowserWindow, Menu, shell, ipcMain } = require('electron');
 const path = require('path');
@@ -36,6 +36,15 @@ if (process.env.BROWSER_HEADLESS === undefined) process.env.BROWSER_HEADLESS = '
 const BASE_DIR = app.getPath('userData');
 process.env.TT_BASE_DIR = BASE_DIR;
 
+const { ensureBrowsers } = require('../lib/browsers');
+
+/** 首次运行解压自带 Chromium（安装包 extraResources 里的 browser-payload.tar.gz） */
+function setupBrowsers() {
+  return ensureBrowsers(BASE_DIR, [
+    process.resourcesPath ? path.join(process.resourcesPath, 'browser-payload.tar.gz') : null,
+    path.join(__dirname, '..', 'browser-payload.tar.gz'),
+  ]);
+}
 
 let win = null;
 
@@ -191,10 +200,9 @@ function createWindow(port) {
     if (!details || details.reason === 'clean-exit') return;
     try { win.webContents.reload(); } catch (_) {}
   });
-  const q = process.env.TT_URL_QUERY ? ('?' + process.env.TT_URL_QUERY.replace(/^\?/, '')) : '';
-  console.log('[app] loading http://127.0.0.1:' + port + '/' + q);
+  console.log('[app] loading http://127.0.0.1:' + port + '/');
   win
-    .loadURL(`http://127.0.0.1:${port}/${q}`)
+    .loadURL(`http://127.0.0.1:${port}/`)
     .then(() => console.log('[app] loadURL resolved'))
     .catch((e) => console.log('[app] loadURL rejected:', e && e.message));
 
@@ -245,8 +253,7 @@ function createWindow(port) {
   // 调试用：TT_SHOT=<png路径> 时，页面加载后截图并退出（用于自动化验证界面）
   if (process.env.TT_SHOT) {
     win.webContents.once('did-finish-load', async () => {
-      const delay = Number(process.env.TT_SHOT_DELAY || 1500);
-      await new Promise((r) => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, 1500));
       const img = await win.webContents.capturePage();
       require('fs').writeFileSync(process.env.TT_SHOT, img.toPNG());
       console.log('[app] shot saved:', process.env.TT_SHOT);
@@ -271,10 +278,12 @@ app.whenReady().then(async () => {
   splashStep(6, 'L:1');
 
   try {
+    // 解压自带 Chromium 是最耗时的一步（首次运行 160MB+），给个假进度往上爬
     splashStep(14, 'L:2');
+    await setupBrowsers();
     splashStep(62, 'L:3');
   } catch (e) {
-    console.error('[app] 启动准备失败:', e && e.message);
+    console.error('[app] 解压浏览器失败:', e && e.message);
     splashStep(62, 'L:6');
   }
 

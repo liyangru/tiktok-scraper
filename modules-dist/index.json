@@ -1,17 +1,61 @@
 {
-  "generatedAt": "2026-11-17T00:58:21.562Z",
+  "generatedAt": "2026-11-17T01:46:39.702Z",
   "tag": "modules-v1",
   "modules": [
     {
       "id": "ai-analyst",
-      "name": "AI 数据分析",
-      "version": "1.2.0",
-      "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌/账号级解读。需先在设置里配置大模型接口。",
+      "name": "AI 分析与复刻脚本",
+      "version": "1.1.0",
+      "description": "基于本地视频数据库的 AI 分析：单条视频解读、品牌级解读；选一条视频抽帧后由视觉模型生成复刻脚本（hook/分镜/文案/CTA/发布建议）。ffmpeg 已随应用内置（extraResources/bin）。需要先在 .env 配置 LLM_BASE_URL / LLM_API_KEY。",
       "author": "liyangru",
       "requires": [],
-      "size": 4307,
-      "sha256": "7a09c4b2e85a645ac9be1b6c8a19ba53da722047c9de76fa45e43a99e8c8f620",
-      "url": "ai-analyst-1.2.0.tar.gz"
+      "size": 6710,
+      "sha256": "50a45f1ccfb74bbb60db82941eb857dd0a3bac4c1bf5ad4c01fdfd3cb092f44e",
+      "url": "ai-analyst-1.1.0.tar.gz"
+    },
+    {
+      "id": "brand-analytics",
+      "name": "品牌媒体分析",
+      "version": "1.0.0",
+      "description": "把多个账号归到同一品牌下看整体：品牌总粉丝/总播放/总互动、账号贡献对比（谁贡献最多）、月度趋势、品牌 TOP 视频榜，以及互动率、平均时长等媒体运营指标。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 5649,
+      "sha256": "ffc6574786d9b5ed030db4d4e45f72b8c7ce85b055a998f670e04ac40106d6d5",
+      "url": "brand-analytics-1.0.0.tar.gz"
+    },
+    {
+      "id": "seller-api",
+      "name": "开放平台数据（API）",
+      "version": "1.0.0",
+      "description": "TikTok Shop Partner（开放平台）官方 API 接入：应用密钥配置 → 商家授权 → 自动换取/刷新 access_token → 取授权店铺 shop_cipher → 拉取店铺视频业绩（GMV/订单/商品点击/点击率/销量/涨粉）并按视频ID合并进明细。比浏览器导出更稳、可自动化，且不依赖页面结构。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 12159,
+      "sha256": "a00795bbbe5d99edd88f5cce225e37a0fd553009995286d7f625288b60a7871e",
+      "url": "seller-api-1.0.0.tar.gz"
+    },
+    {
+      "id": "seller-import",
+      "name": "卖家中心登录",
+      "version": "1.4.0",
+      "description": "登录 TikTok 卖家中心，支持多账号与站点选择（泰国本地店 seller-th / 跨境全球店 globalselling）。登录成功后自动导入并抓取商家数据（GMV / 订单 / 商品点击 / GPM / 完播率等），抓取失败可重试；主页保留「手动导入」上传卖家中心导出的 xlsx。与 TikTok 抓取结果按视频ID合并。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 19943,
+      "sha256": "143a9bd24a3d91012d6245d172100b861f6ae022185379ec8395a7472ad7c012",
+      "url": "seller-import-1.4.0.tar.gz"
+    },
+    {
+      "id": "tiktok-login",
+      "name": "创作中心登录",
+      "version": "1.3.0",
+      "description": "登录 TikTok 创作中心（扫码优先，可切账密/邮箱）。首次登录用有头窗口，保存登录态后全程无头自动登录，失败才再弹窗。登录成功后自动抓取创作中心数据并同步到应用：账号级日度趋势（播放/点赞/评论/分享/粉丝/触达/主页访问）、完播率历史、流量来源与搜索词 —— 趋势图的第二个数据来源。支持多账号（切换/退出/删除）。",
+      "author": "liyangru",
+      "requires": [],
+      "size": 14188,
+      "sha256": "25a530087956800f4ae7ee6614e7c0d55c0d747c5fe05012b73f37a8c000d910",
+      "url": "tiktok-login-1.3.0.tar.gz"
     }
   ]
 }

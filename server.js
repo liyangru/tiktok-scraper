@@ -12,6 +12,7 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const envfile = require('./lib/envfile');
+const scraper = require('./lib/scraper');
 const report = require('./lib/report');
 
 // 可写基目录：单文件 exe（pkg）下 __dirname 是只读快照，必须由 bootstrap 注入 TT_BASE_DIR
@@ -24,6 +25,7 @@ const settings = require('./lib/settings');
 const modules = require('./lib/modules');
 const videodb = require('./lib/videodb');
 const llm = require('./lib/llm');
+const videodl = require('./lib/videodl');
 
 const PORT = parseInt(process.env.PORT || '8899', 10);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -570,10 +572,14 @@ app.post('/api/update/download', async (req, res) => {
 
 app.get('/api/health', (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  const chrome = scraper.resolveChromePath();
   res.json({
     ok: true,
-    engine: 'local-data',
-    browserless: true,
+    engine: scraper.ENGINE,
+    chrome: chrome || null,
+    chromeFound: !!chrome,
+    concurrency: CONCURRENCY,
+    headless: process.env.BROWSER_HEADLESS === '1',
     version: APP_VERSION,
     build: BUILD_STAMP,
     autoUpgraded: AUTO_UPGRADED,
@@ -581,54 +587,144 @@ app.get('/api/health', (req, res) => {
 });
 
 /** 提交抓取任务 */
-/**
- * 从本地视频库加载数据（无浏览器抓取）。
- * 前端「开始抓取」按钮实际调用此接口：把已沉淀的视频库转成一个可分析任务。
- */
-function loadFromDb(req, res) {
-  const db = (typeof videodb.toAccounts === 'function') ? videodb.toAccounts() : [];
-  const accounts = db.filter((a) => a.items && a.items.length);
-  if (!accounts.length) {
-    return res.status(400).json({ error: '本地视频库为空。请先在设置里导入数据（xlsx / csv / json）。' });
+app.post('/api/scrape', async (req, res) => {
+  const body = req.body || {};
+  const raw = Array.isArray(body.handles) ? body.handles : String(body.handles || '').split(/[\n,，;；\s]+/);
+  const handles = [...new Set(raw.map(cleanHandle).filter(Boolean))];
+  if (!handles.length) return res.status(400).json({ error: '请至少填写一个 TikTok 用户名' });
+  if (handles.length > 20) return res.status(400).json({ error: '单次最多 20 个账号' });
+  for (const h of handles) {
+    if (!/^[A-Za-z0-9._]{2,40}$/.test(h)) return res.status(400).json({ error: `用户名格式不对: ${h}` });
   }
-  const to = todayBangkok();
+
+  const chrome = scraper.resolveChromePath();
+  if (!chrome && process.env.BROWSER_HEADLESS !== '1') {
+    return res.status(500).json({ error: '没找到 Chrome/Chromium，请设置环境变量 CHROME_PATH 指向浏览器可执行文件' });
+  }
+
+  let to = body.to || todayBangkok();
+  // ⚠️ 本期边界必须在下面被扩写成并集之前就定下来，否则期次信息永久丢失
+  const currentFrom = body.from || to.slice(0, 8) + '01'; // 空 = 当月 1 号
+  const currentTo = to;
+  // 对比期：抓取范围扩成「本期 ∪ 对比期」，出结果后再按期切分对比
+  const cmpFrom = body.compareFrom || '';
+  const cmpTo = body.compareTo || '';
+  const hasCompare = !!(cmpFrom && cmpTo);
+  let from2 = currentFrom;
+  if (hasCompare) {
+    if (cmpFrom < from2) from2 = cmpFrom;
+    if (cmpTo > to) to = cmpTo;
+  }
+  const from = from2;
+
+  // 两期重叠 → 同一批视频会同时落进两期，算出来的 delta 一定是错的。
+  // 前端弹窗（cmpOk）已经拦了一道，这里再兜一层：API 可以被别的调用方直接打。
+  if (hasCompare) {
+    const ovFrom = cmpFrom > currentFrom ? cmpFrom : currentFrom;
+    const ovTo = cmpTo < currentTo ? cmpTo : currentTo;
+    if (ovFrom <= ovTo) {
+      return res.status(400).json({
+        error: `对比期与本期有重叠（${ovFrom} ~ ${ovTo}），同一批视频会同时算进两期，对比结果不可用。请把对比期改到本期之前。`,
+      });
+    }
+  }
+
   const job = {
     id: newId(),
     createdAt: new Date().toISOString(),
-    status: 'done',
-    handles: accounts.map((a) => a.handle),
-    from: '',
+    status: 'queued',
+    handles,
+    from, // 抓取区间（= 本期 ∪ 对比期），不是用户选的本期
     to,
-    currentFrom: '',
-    currentTo: to,
-    compareFrom: null,
-    compareTo: null,
-    concurrency: 1,
+    /* 期次边界：job 重开后要靠这两个区间把结果拆回「本期 vs 对比期」 */
+    currentFrom,
+    currentTo,
+    compareFrom: hasCompare ? cmpFrom : null,
+    compareTo: hasCompare ? cmpTo : null,
+    concurrency: Math.max(1, Math.min(parseInt(body.concurrency, 10) || CONCURRENCY, 3)),
     events: [],
     accounts: [],
     error: null,
-    finishedAt: new Date().toISOString(),
-    results: accounts,
-    source: 'local-db',
+    finishedAt: null,
   };
-  job.rowCount = report.toRows(job.results).length;
   jobs.set(job.id, job);
   saveJob(job);
-  res.json({ id: job.id, from: job.from, to: job.to, handles: job.handles, rowCount: job.rowCount });
-}
-app.post('/api/scrape', loadFromDb);
-app.post('/api/load-db', loadFromDb);
+  res.json({ id: job.id, from, to, handles, concurrency: job.concurrency });
 
-/** 导入数据：把 rows（或 accounts 结构）写入本地库，供后续分析 */
-app.post('/api/import', (req, res) => {
-  const b = req.body || {};
-  const accounts = Array.isArray(b.accounts) ? b.accounts : (Array.isArray(b) ? b : null);
-  if (!accounts) return res.status(400).json({ error: '需要 accounts 数组' });
-  const rows = report.toRows(accounts);
-  const r = videodb.upsertRows(rows);
-  for (const a of accounts) videodb.upsertAccount(a.handle, a.stats);
-  res.json({ ok: true, rows: rows.length, ...r, stats: videodb.stats() });
+  runJob(job).catch((e) => {
+    job.status = 'error';
+    job.error = e.message || String(e);
+    job.finishedAt = new Date().toISOString();
+    saveJob(job);
+  });
 });
+
+async function runJob(job) {
+  job.status = 'running';
+  saveJob(job);
+
+  const push = (ev) => {
+    job.events.push({ t: Date.now(), ...ev });
+    if (job.events.length > 500) job.events.splice(0, job.events.length - 500);
+    // 记录每账号状态
+    if (ev.type === 'account-start') {
+      let a = job.accounts.find((x) => x.handle === ev.handle);
+      if (!a) {
+        a = { handle: ev.handle, state: 'running', found: 0, count: 0 };
+        job.accounts.push(a);
+      }
+      a.state = 'running';
+      a.attempt = ev.attempt || 1;
+    } else if (ev.type === 'account-retry') {
+      const a = job.accounts.find((x) => x.handle === ev.handle);
+      if (a) {
+        a.state = 'retrying';
+        a.attempt = (ev.attempt || 1) + 1;
+      }
+    } else if (ev.type === 'account-progress') {
+      const a = job.accounts.find((x) => x.handle === ev.handle);
+      if (a) a.found = ev.found;
+    } else if (ev.type === 'account-done') {
+      const a = job.accounts.find((x) => x.handle === ev.handle);
+      if (a) {
+        a.state = 'done';
+        a.count = ev.count;
+        a.stats = ev.stats;
+      }
+    }
+  };
+
+  const results = await scraper.scrapeMany(job.handles, {
+    from: job.from,
+    to: job.to,
+    concurrency: job.concurrency,
+    maxScrolls: MAX_SCROLLS,
+    onEvent: push,
+  });
+
+  for (const h of job.handles) {
+    const a = job.accounts.find((x) => x.handle === h);
+    if (a && a.state === 'running') a.state = 'failed';
+  }
+
+  job.results = results.map((r) => ({
+    handle: r.handle,
+    nickname: r.nickname,
+    stats: r.stats,
+    items: r.items,
+  }));
+  job.rowCount = report.toRows(job.results).length;
+  job.status = 'done';
+  job.finishedAt = new Date().toISOString();
+  saveJob(job);
+  // 沉淀进视频数据库（按 vid 去重 + 指标历史），供 AI 分析与趋势使用
+  try {
+    const ing = videodb.ingest(job);
+    console.log(`  [db] 视频库：新增 ${ing.added}，更新 ${ing.updated}`);
+  } catch (e) {
+    console.log(`  ⚠ 视频库写入失败：${e.message}`);
+  }
+}
 
 /** 删除任务（单条） */
 app.delete('/api/jobs/:id', (req, res) => {
@@ -969,12 +1065,7 @@ async function applySync(rows, ranges, job) {
  * 模块能拿到的核心能力。
  * ⚠️ 模块在**主进程内**运行，不是沙箱 —— 所以只从本仓库安装模块。
  */
-/* 2.0 极简版：只加载白名单模块。生产数据目录里可能残留旧版登录/卖家模块，
-   即使文件还在也不许挂载 —— 这是「取消的东西连带功能也要取消」的硬保证。 */
-const ALLOWED_MODULES = new Set(['ai-analyst']);
-
 const MODULE_CTX = {
-  allowedModules: [...ALLOWED_MODULES],
   baseDir: BASE_DIR,
   dataDir: DATA_DIR,
   settings,
@@ -985,17 +1076,25 @@ const MODULE_CTX = {
   },
   /* ⚠️ 模块能 require 的库只限这里给的 —— pkg 打包后模块在快照外，自己 require 不到核心依赖 */
   core: {
+    scraper,
     report,
     exceljs: require('exceljs'),
     envfile,
+    chromium: require('patchright').chromium, // 套壳浏览器用（卖家中心登录）
     llm,
     videodb,
   },
 };
 
+/** 视频解析与下载：**核心默认功能**（Round 6 起不再是模块），路由不变 */
+videodl.register(app, {
+  core: { scraper },
+  log: (m) => console.log(`  [videodl] ${m}`),
+  getOutDir: resolveDownloadDir,
+});
+
 /** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */
-const LOADED_MODULES = modules.loadEnabled(app, MODULE_CTX, (m) => console.log(`  ⚠ 模块：${m}`))
-  .filter((id) => ALLOWED_MODULES.has(id));
+const LOADED_MODULES = modules.loadEnabled(app, MODULE_CTX, (m) => console.log(`  ⚠ 模块：${m}`));
 
 /**
  * ⚠️ /api/* 未命中任何路由时，express 默认回一页 HTML 404 ——
@@ -1041,12 +1140,14 @@ function listen(port, tries = 50) {
   return new Promise((resolve, reject) => {
     const srv = app.listen(port, HOST);
     srv.on('listening', () => {
+      const chrome = scraper.resolveChromePath();
       if (port !== PORT) console.log(`  ⚠ 端口 ${PORT} 已被占用，自动改用 ${port}`);
       console.log('');
       console.log('  TikTok 多账号数据抓取服务已启动');
       console.log(`  → http://${HOST}:${port}`);
+      console.log(`  浏览器: ${chrome || '未找到（请先安装模块或检查载荷）'}`);
       console.log(`  存储位置: ${resolveDownloadDir()}`);
-      console.log(`  模式: 本地数据分析（无浏览器 / 无登录）`);
+      console.log(`  并发数: ${CONCURRENCY}   有头模式: ${process.env.BROWSER_HEADLESS === '1' ? '否' : '是'}`);
       console.log(`  访问口令: ${ACCESS_TOKEN ? '已启用' : '未启用（仅限本机使用）'}`);
       console.log(`  模块: ${LOADED_MODULES.length ? LOADED_MODULES.join(', ') : '无（可在设置里下载）'}`);
       console.log('');

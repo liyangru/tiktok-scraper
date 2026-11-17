@@ -1,12 +1,12 @@
-# TikTokScraper v2.0.1 · Windows 安装指令（复制整段给 AI 执行）
+# TikTokScraper v2.0.2 · Windows 安装指令（复制整段给 AI 执行）
 
-你现在要在 Windows 机器上帮我安装 TikTokScraper v2.0.1 极简分析版。严格按下面的步骤执行，每步都要给出实际命令和输出，遇到失败原样报错并停止，不要猜测结果。
+你现在要在 Windows 机器上帮我安装 TikTokScraper v2.0.2 极简分析版。严格按下面的步骤执行，每步都要给出实际命令和输出，遇到失败原样报错并停止，不要猜测结果。
 
 ## 环境前提
 - 目标机器：Windows 10/11 x64
-- 版本：v2.0.1（发布日期 2026-11-17）
+- 版本：v2.0.2（发布日期 2026-11-17）
 - 官方仓库：https://github.com/liyangru/tiktok-scraper
-- 安装包直链：https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.1/TikTokScraper-2.0.1-setup.exe
+- 安装包直链：https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-setup.exe
 
 ## 步骤
 
@@ -16,9 +16,9 @@
 ```powershell
 $dir = "$env:TEMP\TikTokScraper-install"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null
-$setup = Join-Path $dir "TikTokScraper-2.0.1-setup.exe"
+$setup = Join-Path $dir "TikTokScraper-2.0.2-setup.exe"
 Invoke-WebRequest -UseBasicParsing `
-  -Uri "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.1/TikTokScraper-2.0.1-setup.exe" `
+  -Uri "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-setup.exe" `
   -OutFile $setup
 "sizeMB=" + [math]::Round((Get-Item $setup).Length/1MB,1)
 ```
@@ -54,7 +54,7 @@ Get-ItemProperty 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
   Where-Object { $_.DisplayName -match 'TikTokScraper' } |
   Select-Object DisplayName,DisplayVersion,UninstallString
 ```
-判定：ProductVersion 必须是 `2.0.1`，注册表 DisplayVersion 必须是 `2.0.1`。
+判定：ProductVersion 必须是 `2.0.2`，注册表 DisplayVersion 必须是 `2.0.2`。
 
 ### 5. 清理 2.0 不需要的旧浏览器载荷（如果从 1.x 升级会残留）
 ```powershell
@@ -79,7 +79,7 @@ Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $proc.Id } |
 ### 7. 完成标准
 - 安装包下载约 98 MB
 - 静默安装 exit=0
-- exe 与注册表版本均为 2.0.1
+- exe 与注册表版本均为 2.0.2
 - 应用能启动且窗口出现「本地数据模式 · 无浏览器」
 - 已清理残留 browser-payload.tar.gz
 

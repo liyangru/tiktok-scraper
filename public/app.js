@@ -117,9 +117,15 @@ async function checkHealth() {
 
 function renderBrowserChip(h) {
   const el = $('#browserChip');
-  if (!el) return;
-  el.className = 'browser-chip ok';
-  el.innerHTML = '<span class="dot"></span><span>本地数据模式 · 无浏览器</span>';
+  if (!el || !h) return;
+  if (h.chromeFound) {
+    const name = (h.chrome || '').split(/[\\/]/).pop() || 'chromium';
+    el.className = 'browser-chip ok';
+    el.innerHTML = `<span class="dot"></span><span>${esc(t('browserReady', { name }))}</span>`;
+  } else {
+    el.className = 'browser-chip bad';
+    el.innerHTML = `<span class="dot"></span><span>${esc(t('noBrowser').replace(/<[^>]+>/g, ''))}</span>`;
+  }
 }
 
 /* ---------------- 启动 ---------------- */
@@ -218,9 +224,6 @@ function init() {
   initCompare();
   checkHealth();
   loadHistory();
-  // URL 带 ?job=<id> 时自动载入该任务（回看/分享/截图验收用）
-  const qJob = new URLSearchParams(location.search).get('job');
-  if (qJob) { state.jobId = qJob; poll(); }
 }
 
 /* ================= 对比日期（小窗，默认同期天数） ================= */
@@ -512,7 +515,8 @@ function showSkeleton() {
 
 /* ---------------- 提交任务 ---------------- */
 async function start() {
-  const handles = $('#handles').value; // 本地数据模式：用户名输入框已隐藏，忽略
+  const handles = $('#handles').value;
+  if (!handles.trim()) return toast(t('needUsername'), 'err');
   $('#log').innerHTML = '';
   seenEvents = new Set();
   state.rows = [];
@@ -524,7 +528,7 @@ async function start() {
   showLoader('scrape', t('loadBoot'));
 
   try {
-    const res = await fetch(API + '/api/load-db', {
+    const res = await fetch(API + '/api/scrape', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -757,7 +761,7 @@ function renderEc(rows) {
       <td>${esc(labels[i] || k)}</td>
       <td class="num">${isPct ? (a * 100).toFixed(2) + '%' : fmt(a)}</td>
       <td class="num">${isPct ? (b * 100).toFixed(2) + '%' : fmt(b)}</td>
-      <td class="num ${cls}">${diff === null ? '—' : `<span class="diff-bar ${cls}" style="--w:${Math.min(100, Math.abs(diff) * 100).toFixed(0)}%">${(diff >= 0 ? '+' : '') + (diff * 100).toFixed(1)}%</span>`}</td>
+      <td class="num ${cls}">${diff === null ? '—' : `<span class=\"diff-bar ${cls}\" style=\"--w:${Math.min(100, Math.abs(diff) * 100).toFixed(0)}%\">${(diff >= 0 ? '+' : '') + (diff * 100).toFixed(1)}%</span>`}</td>
     </tr>`;
   }).join('');
   return true;
@@ -792,7 +796,7 @@ function renderPeriodCompare() {
       <td>${esc(labels[i] || k)}</td>
       <td class="num">${isPct ? (a * 100).toFixed(2) + '%' : fmt(a)}</td>
       <td class="num">${isPct ? (b * 100).toFixed(2) + '%' : fmt(b)}</td>
-      <td class="num ${cls}">${diff === null ? '—' : `<span class="diff-bar ${cls}" style="--w:${Math.min(100, Math.abs(diff) * 100).toFixed(0)}%">${(diff >= 0 ? '+' : '') + (diff * 100).toFixed(1)}%</span>`}</td>
+      <td class="num ${cls}">${diff === null ? '—' : `<span class=\"diff-bar ${cls}\" style=\"--w:${Math.min(100, Math.abs(diff) * 100).toFixed(0)}%\">${(diff >= 0 ? '+' : '') + (diff * 100).toFixed(1)}%</span>`}</td>
     </tr>`;
   }).join('');
 }
@@ -1097,7 +1101,6 @@ function trendLine(pts, w = 320, h = 72, compact = false) {
     ${hasLabels && !compact ? xLabels.join('') : ''}
   </svg>`;
 }
-
 
 /**
  * 逐条视频的趋势里展示哪些指标、各自来自哪个平台。

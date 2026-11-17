@@ -1,8 +1,8 @@
 {
   "name": "tiktok-scraper",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "private": true,
-  "description": "TikTok 数据分析（AI 解读 / 脚本复刻 / 品牌分析）· 无浏览器 · 无登录 · 极简版",
+  "description": "TikTok 多账号数据抓取与 AI 分析（基础功能完整版 + 图表美化）",
   "author": "TikTok Scraper",
   "main": "electron/main.js",
   "scripts": {
@@ -10,10 +10,11 @@
     "dev": "node server.js",
     "app": "electron .",
     "build:modules": "node scripts/build-modules.js --local",
-    "build:app": "node scripts/build-modules.js --local && electron-builder --win --publish never",
+    "build:payload": "node scripts/build-payload.js",
+    "build:app": "node scripts/build-payload.js && node scripts/build-modules.js --local && electron-builder --win --publish never",
     "build:app:mac": "bash scripts/build-mac.sh",
-    "release": "node scripts/build-modules.js --local && electron-builder --win --publish always",
-    "release:local": "node scripts/build-modules.js --local && node scripts/build-modules.js && electron-builder --win --publish never"
+    "release": "node scripts/build-payload.js && node scripts/build-modules.js --local && electron-builder --win --publish always",
+    "release:local": "node scripts/build-payload.js && node scripts/build-modules.js --local && node scripts/build-modules.js && electron-builder --win --publish never"
   },
   "build": {
     "appId": "com.ttscraper.app",
@@ -24,19 +25,52 @@
       "buildResources": "build"
     },
     "files": [
-      "server.js",
-      "lib/**/*",
-      "public/**/*",
-      "electron/**/*",
-      "package.json"
+      "**/*",
+      "!browser-payload*.tar.gz",
+      "!browser-payload*.tar.gz.bak",
+      "!*.bak",
+      "!**/.env",
+      "!**/.env.*",
+      "!runtime.json",
+      "!settings.json",
+      "!_*.txt",
+      "!_*.png",
+      "!_*.js",
+      "!scripts/_*.js",
+      "!.*-browsers/**",
+      "!.mac-browsers*/**",
+      "!.win-browsers*/**",
+      "!_macdl/**",
+      "!dist/**",
+      "!release/**",
+      "!release-mac/**",
+      "!out/**",
+      "!data/**",
+      "!browsers/**",
+      "!modules/**",
+      "!modules-src/**",
+      "!modules-dist/**",
+      "!docs/**",
+      "!scripts/**",
+      "!vendor/**",
+      "!*.md",
+      "!nul"
     ],
     "extraResources": [
+      {
+        "from": "browser-payload.tar.gz",
+        "to": "browser-payload.tar.gz"
+      },
       {
         "from": "modules-dist",
         "to": "modules-dist",
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "vendor/ffmpeg.exe",
+        "to": "bin/ffmpeg.exe"
       }
     ],
     "win": {
@@ -94,10 +128,13 @@
   "dependencies": {
     "exceljs": "^4.4.0",
     "express": "^5.2.0",
+    "patchright": "^1.63.0",
+    "playwright-core": "^1.63.0",
     "tar": "^7.5.22"
   },
   "devDependencies": {
     "electron": "^44.7.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "playwright": "^1.64.0"
   }
 }

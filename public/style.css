@@ -968,18 +968,6 @@ label.dl-item .dl-desc { flex: 1; min-width: 0; overflow: hidden; text-overflow:
   font-size: 11.5px; line-height: 1.5; color: var(--ink-2); white-space: pre-wrap; word-break: break-all;
 }
 
-
-/* ===== 2.0 极简分析版：隐藏登录/卖家/下载相关 UI（后端路由已移除） ===== */
-#sellerPanel, #tipBubble, #loginModal, #sellerModal, #pickBar,
-#dlBatchBtn, #dlResolveBtn2, #searchHint { display: none !important; }
-.set-group:has(#loginActions) { display: none !important; }
-#history .hist-del, #history .lk-danger { display: none !important; }
-
-/* 左栏抓取输入区隐藏：本地数据模式不再填用户名抓取 */
-#handles, #quickAcc, #startBtn + #stopBtn { display: none !important; }
-label.fld:has(#handles) { display: none !important; }
-
-
 /* ================= 2.1 图表升级：平滑曲线 / 面积 / 网格 / 刻度 / 动效 ================= */
 .spark { display: block; width: 100%; height: auto; overflow: visible; }
 .spark .sp-grid { stroke: var(--line-soft); stroke-width: 1; }
