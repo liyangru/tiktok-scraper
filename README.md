@@ -1,6 +1,8 @@
 # TikTok 多账号数据抓取
 
-**输入用户名 → 自动抓取主页全部视频数据（播放 / 点赞 / 评论 / 分享 / 收藏 / 时长 / 文案 / 话题标签）→ 导出 Excel。**
+**输入用户名 → 自动抓取主页全部视频数据（播放 / 点赞 / 评论 / 分享 / 收藏 / 时长 / 文案 / 话题标签）→ 周期对比、挂车分析 → 导出 Excel。**
+
+三种用法：桌面应用 · Claude Code / Codex 插件（不用开应用）· 命令行。
 
 打包成桌面应用和单文件 exe，**自带浏览器，目标机器不需要装 Node.js，也不需要 Chrome**。
 
@@ -35,13 +37,33 @@
 
 ---
 
+## 不开应用：在 Claude / Codex 里直接用
+
+同一套抓取和分析，做成了 MCP 插件和命令行。对话里说「抓 @loopearplugs.th 本月数据，和上月同期比」就行。
+
+| 用在哪 | 怎么装 |
+|---|---|
+| **Claude Code** | `/plugin marketplace add liyangru/tiktok-scraper`<br>`/plugin install tiktok-scraper@liyangru-tiktok` |
+| **Codex** | `git clone https://github.com/liyangru/tiktok-scraper && cd tiktok-scraper`<br>`npm run agents codex` |
+| **Claude Desktop** | 克隆后 `npm run agents claude-desktop`，重启 Claude Desktop |
+| **命令行** | 克隆后 `npm run setup`，然后 `node bin/cli.js scrape loopearplugs.th --preset thisMonth --compare lastMonth --xlsx` |
+
+- 工具：`start_scrape`（抓取，自动带对比期）· `get_scrape`（进度 / 分析摘要）· `list_videos`（明细）· `export_report`（Excel/CSV）· `list_scrapes` · `stop_scrape` · `doctor`
+- 首次使用自动安装运行依赖和抓取用 Chromium（约 170MB，只装一次）；电脑上装过桌面应用的话，直接复用它的浏览器和历史任务
+- 需要 Node.js 18+；插件模式默认无头浏览器，和正在运行的桌面应用互不影响
+
+---
+
 ## 功能
 
 - **真实浏览器抓取**，拿的是 TikTok 官方原始 JSON，不是爬 HTML（见下方原理）
 - **多账号批量**，支持换行 / 逗号 / 空格分隔，也可直接粘贴主页链接
-- **日期区间筛选**（今天、本月、上月、近三个月、全部，或自定义）
-- **导出 Excel / CSV**，列包含播放、点赞、评论、分享、收藏、互动率、时长、文案、话题标签
-- **界面**：极简黑白灰；三语（中文 / ไทย / English）；加载骨架屏；按任意列排序；账号标签页；关键词搜索
+- **日期筛选**：今天 / 昨天 / 本周 / 上周 / 本月 / 上月 / 最近 7·30·90 天 / 全部 / 自定义；点日期框任意位置即可选日期，全部按曼谷日历计算
+- **周期对比**：上周（上一周相同几天）、上月同期（严格同日期，上月没有的日期取月末）、上一周期（等长）、自定义；同时给出总量、日均、条均与合并口径互动率，数据不足时明确标注
+- **挂车 vs 非挂车**：条均 / 剔除最高最低两种算法，切换即时重算，样本不足 3 条自动回退
+- **真实进度**：百分比按真实加载到的日期计算，界面简洁（一行状态 + 一条进度条）；可随时停止，已抓到的数据保留
+- **导出 Excel / CSV**，列包含播放、点赞、评论、分享、收藏、互动率、时长、文案、话题标签；有对比期时附「本期 vs 对比期」工作表
+- **界面**：数据分析工作台；所有图表与对比区可折叠（状态记忆）；三语（中文 / ไทย / English）；按任意列排序；账号切换；关键词搜索
 - **桌面体验**：独立应用窗口（无命令行黑框、无浏览器外壳、无「Chrome 测试版」横幅）；单实例；关窗即退出；导出文件自动落到系统「下载」目录并打开文件夹
 - **零依赖运行**：浏览器随包分发，不联网下载、不回退系统 Chrome
 
@@ -240,8 +262,9 @@ cd /root/tiktok-scraper && bash tencent-setup.sh
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `GET` | `/api/health` | 健康检查，返回检测到的浏览器路径 |
-| `POST` | `/api/scrape` | 提交任务 `{handles, from, to, concurrency}` |
-| `GET` | `/api/jobs/:id` | 查询进度与结果 |
+| `POST` | `/api/scrape` | 提交任务 `{handles, from, to, compareMode: none\|previous\|lastWeek\|lastMonth\|custom, compareFrom?, compareTo?}` |
+| `GET` | `/api/jobs/:id` | 查询进度（stage / accounts）与结果（rows / coverage / periodCompare） |
+| `POST` | `/api/jobs/:id/stop` | 停止任务（关闭浏览器，已完成账号的数据保留） |
 | `GET` | `/api/jobs/:id/export.xlsx` | 下载 Excel |
 | `GET` | `/api/jobs/:id/export.csv` | 下载 CSV |
 | `GET` | `/api/jobs` | 历史任务列表 |

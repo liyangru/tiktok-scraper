@@ -1,0 +1,10 @@
+{
+  "name": "tiktok-scraper",
+  "version": "2.2.0",
+  "description": "在 Codex 里直接抓取 TikTok 账号视频数据：周期对比、挂车分析、最佳发布时段、导出 Excel。",
+  "author": { "name": "liyangru", "url": "https://github.com/liyangru" },
+  "homepage": "https://github.com/liyangru/tiktok-scraper",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

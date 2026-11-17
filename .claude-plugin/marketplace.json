@@ -1,0 +1,14 @@
+{
+  "name": "liyangru-tiktok",
+  "owner": { "name": "liyangru", "url": "https://github.com/liyangru" },
+  "metadata": { "description": "TikTok 数据抓取与分析插件" },
+  "plugins": [
+    {
+      "name": "tiktok-scraper",
+      "source": "./",
+      "description": "抓取 TikTok 账号视频数据，周期对比、挂车分析、导出 Excel",
+      "version": "2.2.0",
+      "category": "productivity"
+    }
+  ]
+}

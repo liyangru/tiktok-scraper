@@ -1,20 +1,26 @@
 {
   "name": "tiktok-scraper",
-  "version": "2.0.2",
+  "version": "2.2.0",
   "private": true,
-  "description": "TikTok 多账号数据抓取与 AI 分析（基础功能完整版 + 图表美化）",
+  "description": "TikTok 多账号数据抓取与分析工作台（统一应用：抓取 · 周期对比 · 挂车分析 · 导出）",
   "author": "TikTok Scraper",
   "main": "electron/main.js",
+  "bin": {
+    "tiktok-scraper": "bin/cli.js"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
     "app": "electron .",
-    "build:modules": "node scripts/build-modules.js --local",
     "build:payload": "node scripts/build-payload.js",
-    "build:app": "node scripts/build-payload.js && node scripts/build-modules.js --local && electron-builder --win --publish never",
+    "build:app": "node scripts/build-payload.js && electron-builder --win --publish never",
     "build:app:mac": "bash scripts/build-mac.sh",
-    "release": "node scripts/build-payload.js && node scripts/build-modules.js --local && electron-builder --win --publish always",
-    "release:local": "node scripts/build-payload.js && node scripts/build-modules.js --local && node scripts/build-modules.js && electron-builder --win --publish never"
+    "release": "node scripts/build-payload.js && electron-builder --win --publish always",
+    "test": "node --test test/*.test.js",
+    "setup": "node bin/cli.js setup",
+    "mcp": "node mcp/server.js",
+    "cli": "node bin/cli.js",
+    "agents": "node scripts/setup-agents.js"
   },
   "build": {
     "appId": "com.ttscraper.app",
@@ -47,30 +53,24 @@
       "!out/**",
       "!data/**",
       "!browsers/**",
-      "!modules/**",
-      "!modules-src/**",
-      "!modules-dist/**",
       "!docs/**",
       "!scripts/**",
       "!vendor/**",
       "!*.md",
-      "!nul"
+      "!nul",
+      "!test/**",
+      "!mcp/**",
+      "!bin/**",
+      "!skills/**",
+      "!.claude-plugin/**",
+      "!.codex-plugin/**",
+      "!.agents/**",
+      "!.mcp.json"
     ],
     "extraResources": [
       {
         "from": "browser-payload.tar.gz",
         "to": "browser-payload.tar.gz"
-      },
-      {
-        "from": "modules-dist",
-        "to": "modules-dist",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "vendor/ffmpeg.exe",
-        "to": "bin/ffmpeg.exe"
       }
     ],
     "win": {
@@ -129,12 +129,12 @@
     "exceljs": "^4.4.0",
     "express": "^5.2.0",
     "patchright": "^1.63.0",
-    "playwright-core": "^1.63.0",
     "tar": "^7.5.22"
   },
   "devDependencies": {
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
     "playwright": "^1.64.0"
-  }
+  },
+  "license": "MIT"
 }

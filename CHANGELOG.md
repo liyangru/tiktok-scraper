@@ -4,17 +4,7 @@
 
 ## 版本迭代怎么做
 
-1. **改代码**，并在本文件顶部的 `## [2.0.2] - 2026-11-17
-
-### 恢复
-- 恢复全部基础功能：真实浏览器抓取（Patchright/Playwright + 自带 Chromium）、创作中心/卖家中心登录、开放平台 API、视频下载、数据同步
-- 恢复模块：tiktok-login / seller-import / seller-api / brand-analytics / ai-analyst / video-download
-
-### 变更
-- 保留 2.0.1 的图表美化：平滑曲线 + 面积渐变 + 网格刻度 + 末点脉冲 + 描边动画；卡片迷你趋势；对比差异横条
-- 基础功能与图表美化兼得，Windows/macOS 双平台构建
-
-## [Unreleased]` 区块里记一笔（分类：`新增 / 变更 / 修复 / 移除 / 安全`）。
+1. **改代码**，并在本文件顶部的 `## [Unreleased]` 区块里记一笔（分类：`新增 / 变更 / 修复 / 移除 / 安全`）。
    - 没打算发版就先留在 `Unreleased`，**不要为了发版而发版**。
 2. **确定要发版时**：把 `## [Unreleased]` 改名为 `## [x.y.z] - YYYY-MM-DD`，并在最上面新开一个空的 `## [Unreleased]`；同步改 `package.json` 的 `version`。
 3. **提交并打 tag**：
@@ -35,6 +25,66 @@
 ---
 
 ## [Unreleased]
+
+## [2.2.0] - 2026-11-17
+
+### 新增
+- **插件 / 命令行版：不用打开应用也能抓取分析**
+  - Claude Code 插件（`.claude-plugin/`）：`/plugin marketplace add liyangru/tiktok-scraper` 安装，自带 MCP 服务与 `tiktok-analytics` 技能
+  - Codex 插件（`.codex-plugin/`）+ `npm run agents codex` 一键写入 `~/.codex/config.toml` 并安装技能；`claude-desktop` / `claude-code` 同样一条命令接入
+  - MCP 服务 `mcp/server.js`（零依赖 stdio）：`start_scrape` / `get_scrape` / `list_videos` / `list_scrapes` / `export_report` / `stop_scrape` / `doctor`；抓取先启动后查询，不受客户端 60 秒超时限制；返回精简 JSON 省 token
+  - 命令行 `bin/cli.js`：`tiktok-scraper scrape @a @b --preset thisMonth --compare lastMonth --xlsx`
+  - 与桌面应用共用数据目录（历史任务、视频库、浏览器），装过应用就不用再下载浏览器；没装则首次使用自动安装依赖和 Chromium
+- 抓取进度改为真实百分比（按已经往回加载到哪一天计算），界面只有一行状态（如「正在加载视频 71%」）、一条进度条和每个账号的条数，日志默认收起
+- 打开历史任务时结果区淡出 + 顶部加载条，历史行内转圈
+- 发布时段柱状图 + 最佳时段（样本 ≥2 条）
+- 「复制简报」：一键复制本期结论（汇总、对比、TOP 视频）到剪贴板
+- 记住上次输入的账号，常用账号一键添加；视频明细分页「显示更多」，`/` 快速聚焦搜索
+
+### 变更
+- 界面回到 2.0 的黑白简洁风格：左侧抓取 / 进度 / 历史，右侧结果；说明文字收进 ⓘ 提示，不再大段铺字
+- KPI 分层：4 个主指标大卡 + 5 个次要指标横条；对比数据不足时只在顶部提示一次
+- 历史任务内联在左侧，点开不打断当前结果
+- 日期框改为整块按钮：点日期文字、空白、图标都直接弹出日期选择器，显示「2026/11/01 周日」
+- 对比口径：「上周（环比）」= 上一周的相同几天，只适用于 7 天以内的区间（更长区间自动改为上一周期并提示）；「上月同期」= 严格同日期，上个月没有的日期（如 31 日）取上个月最后一天，不再把完整自然月对齐到上月整月
+- 「单条视频 AI 解读」和概览里的「AI 经营简报」统一改名为「AI 分析」
+- 抓取任务逻辑抽到 `lib/jobs.js`，桌面应用 / 命令行 / MCP 共用；新增 `GET /api/jobs/:id/summary`
+
+### 移除
+- 开放平台 API（TikTok Shop Partner API）：设置入口、`/api/seller-api/*`、`.env` 里的 TTS_/TTM_ 配置项
+- `playwright-core` 依赖（只用 Patchright），安装更轻
+
+## [2.1.0] - 2026-11-17
+
+### 新增
+- 统一数据分析工作台：顶部 → 数据筛选 → 抓取状态 → 数据概览 → 图表分析 → 挂车对比 → 周期对比 → 视频明细
+- 日期筛选重做：11 个快捷项的分段组件；点日期文字 / 空白 / 图标都能打开选择器（showPicker + 原生按钮覆盖兜底），支持键盘；倒置、超出今天、非法日期自动规整并提示
+- 周期对比：不对比 / 上一周期 / 上周同期 / 上月同期 / 自定义；前后端共用 `public/shared/period.js`，界面显示的区间就是实际抓取的区间
+- 对比口径：总量 + 日均 + 条均 + 合并互动率；基数为 0 或无数据不出 Infinity/NaN；区分真实 0 与无数据；历史未加载完整时标注「数据不足」
+- 挂车对比：条均 / 剔除最高最低（每个指标分别剔除，样本不足 3 条自动回退）
+- 统一折叠组件：所有图表、账号趋势、创作中心趋势、视频历史趋势、周期对比都可折叠，整行可点、键盘可用、状态持久化
+- 真实抓取进度：后端上报启动浏览器 / 打开主页 / 读取账号 / 滚动加载 / 筛选 / 保存 / 统计等阶段；按账号分段进度条；真正可用的「停止抓取」接口（已停止 ≠ 失败）；退出时进行中的任务标记为「已中断」
+- 单元测试：`npm test`（日期、周期对比、挂车算法）
+
+### 移除
+- 模块化架构：模块商店、安装 / 卸载 / 启停、依赖级联、远程索引、自动升级、`lib/modules.js`、`modules*/`、`scripts/build-modules.js`、`scripts/upload-modules.js`；保留的能力迁到 `lib/features/` 与 `public/features/` 作为内置功能
+- 复刻脚本（前后端、`/api/ai-analyst/remake`、ffmpeg 打包）
+- 品牌媒体分析（模块、`/api/brand-analytics/*`、`/api/ai-analyst/brand`、文案）
+
+### 变更
+- 两期允许重叠（如本期 14 天选「上周同期」），重叠日期内的视频同时计入两期并明确提示
+- Excel 汇总 / TOP / 挂车表只统计本期，明细表与 CSV 增加「期次」列
+- `GET /api/videos/:vid` 没有快照时返回空历史而不是 404
+
+## [2.0.2] - 2026-11-17
+
+### 恢复
+- 恢复全部基础功能：真实浏览器抓取（Patchright/Playwright + 自带 Chromium）、创作中心/卖家中心登录、开放平台 API、视频下载、数据同步
+- 恢复模块：tiktok-login / seller-import / seller-api / brand-analytics / ai-analyst / video-download
+
+### 变更
+- 保留 2.0.1 的图表美化：平滑曲线 + 面积渐变 + 网格刻度 + 末点脉冲 + 描边动画；卡片迷你趋势；对比差异横条
+- 基础功能与图表美化兼得，Windows/macOS 双平台构建
 
 ## [1.2.0] - 2026-10-12
 

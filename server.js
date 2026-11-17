@@ -22,7 +22,8 @@ const BASE_DIR = process.env.TT_BASE_DIR || __dirname;
 envfile.load(path.join(BASE_DIR, '.env'));
 
 const settings = require('./lib/settings');
-const modules = require('./lib/modules');
+const TTPeriod = require('./public/shared/period.js');
+const TTMetrics = require('./public/shared/metrics.js');
 const videodb = require('./lib/videodb');
 const llm = require('./lib/llm');
 const videodl = require('./lib/videodl');
@@ -120,37 +121,12 @@ app.use(
   })
 );
 
-// 已安装模块的前端资源 → /modules/<id>/…
-// ⚠️ app.use('/modules') 会把挂载前缀从 req.url 里剥掉，所以 req.url 已是 /<id>/…；
-//    还要再把 <id> 这一段剥掉，才能映射到 <模块>/public/xxx —— 不剥就 404。
-app.use('/modules', (req, res, next) => {
-  const seg = String(req.url).split('/').filter(Boolean);
-  const id = seg[0];
-  if (!id) return next();
-  const dir = modules.publicDirOf(id);
-  if (!dir) return res.status(404).end();
-  req.url = '/' + seg.slice(1).join('/');
-  express.static(dir, {
-    etag: false,
-    lastModified: false,
-    setHeaders: (r2) => r2.setHeader('Cache-Control', 'no-store, must-revalidate'),
-  })(req, res, next);
-});
-
 /* ================= 设置 ================= */
 
 app.get('/api/settings', (req, res) => {
   const core = settings.getCore();
   res.json({
     core,
-    /* 密钥只回「是否已配置」，绝不回显明文 */
-    secrets: {
-      TTS_APP_KEY: envfile.has(settings.ENV_FILE, 'TTS_APP_KEY'),
-      TTS_APP_SECRET: envfile.has(settings.ENV_FILE, 'TTS_APP_SECRET'),
-      TTS_ACCESS_TOKEN: envfile.has(settings.ENV_FILE, 'TTS_ACCESS_TOKEN'),
-      TTM_APP_ID: envfile.has(settings.ENV_FILE, 'TTM_APP_ID'),
-      TTM_APP_SECRET: envfile.has(settings.ENV_FILE, 'TTM_APP_SECRET'),
-    },
     baseDir: BASE_DIR,
     envFile: settings.ENV_FILE,
   });
@@ -182,135 +158,18 @@ app.post('/api/settings', (req, res) => {
   res.json({ ok: true, core: settings.getCore() });
 });
 
-/* ================= 模块 ================= */
-
-app.get('/api/modules', async (req, res) => {
-  const installed = modules.installedMap();
-  let index = [];
-  let indexError = '';
-  try {
-    index = await modules.fetchIndex();
-  } catch (e) {
-    indexError = e.message;
-  }
-  const list = index.map((m) => ({
-    ...m,
-    installed: !!installed[m.id],
-    installedVersion: installed[m.id] ? installed[m.id].version : '',
-    enabled: !!installed[m.id] && settings.isEnabled(m.id),
-    updateAvailable: !!(installed[m.id] && m.version && installed[m.id].version !== m.version),
-  }));
-  // 已装但索引里没有的（本地开发的模块）也列出来
-  for (const [id, man] of Object.entries(installed)) {
-    if (!list.some((x) => x.id === id)) {
-      list.push({ ...man, installed: true, installedVersion: man.version, enabled: settings.isEnabled(id), local: true });
-    }
-  }
-  // 装过又被删掉的：仍然列出来，带「下载」按钮 —— 用户要求删除后不能从设置里消失
-  for (const [id, meta] of Object.entries(settings.knownModules())) {
-    if (list.some((x) => x.id === id)) continue;
-    list.push({
-      id,
-      name: meta.name || id,
-      version: meta.version || '',
-      description: meta.description || '',
-      requires: [],
-      installed: false,
-      installedVersion: '',
-      enabled: false,
-      updateAvailable: false,
-      deleted: true,
-    });
-  }
-  res.json({ indexError, modules: list, dir: modules.MODULES_DIR, indexUrl: modules.resolveIndexUrl() });
+/* ================= 抓取任务（与命令行 / 插件共用 lib/jobs.js） ================= */
+const { createJobStore, JobError } = require('./lib/jobs');
+const jobStore = createJobStore({
+  dataDir: DATA_DIR,
+  scraper,
+  report,
+  videodb,
+  maxScrolls: MAX_SCROLLS,
+  applySync: (rows, ranges, job) => applySync(rows, ranges, job),
+  log: (m) => console.log(`  [job] ${m}`),
 });
-
-/** 下载安装进度（前端在 POST install 飞行期间轮询） */
-app.get('/api/modules/:id/install-progress', (req, res) => {
-  res.json(modules.getProgress(req.params.id) || { stage: 'idle', pct: 0 });
-});
-
-app.post('/api/modules/:id/install', async (req, res) => {
-  const id = req.params.id;
-  try {
-    const index = await modules.fetchIndex();
-    const entry = index.find((m) => m.id === id);
-    if (!entry) return res.status(404).json({ error: `索引里没有模块 ${id}` });
-    const man = await modules.install(entry);
-    // 下载即启用（含依赖级联）—— 用户要求「下载了就可以重启出现在应用里」
-    const en = modules.enableWithDeps(id);
-    res.json({
-      ok: true,
-      module: man,
-      enabled: en.enabled,
-      missingDeps: en.missing,
-      restartRequired: true,
-    });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.delete('/api/modules/:id', (req, res) => {
-  const id = req.params.id;
-  if (settings.isEnabled(id)) {
-    const r = modules.disableSafely(id);
-    if (!r.ok) return res.status(409).json({ error: `被这些已启用模块依赖，无法卸载：${r.blockedBy.join(', ')}` });
-  }
-  const ok = modules.uninstall(id);
-  res.json({ ok, restartRequired: true });
-});
-
-app.post('/api/modules/:id/toggle', (req, res) => {
-  const id = req.params.id;
-  const want = !!(req.body && req.body.enabled);
-  if (want) {
-    const r = modules.enableWithDeps(id);
-    if (r.missing.length) {
-      return res.status(409).json({ error: `缺少依赖模块：${r.missing.join(', ')}`, enabled: r.enabled });
-    }
-    return res.json({ ok: true, enabled: r.enabled, restartRequired: true });
-  }
-  const r = modules.disableSafely(id);
-  if (!r.ok) return res.status(409).json({ error: `这些已启用模块依赖它，请先停用它们：${r.blockedBy.join(', ')}` });
-  res.json({ ok: true, enabled: [], restartRequired: true });
-});
-
-/* ================= 核心 ================= */
-
-/** 内存中的任务表 */
-const jobs = new Map();
-
-function saveJob(job) {
-  const p = path.join(DATA_DIR, `${job.id}.json`);
-  fs.writeFileSync(p, JSON.stringify(job));
-}
-function loadJobsFromDisk() {
-  for (const f of fs.readdirSync(DATA_DIR)) {
-    if (!f.endsWith('.json')) continue;
-    try {
-      const j = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8'));
-      jobs.set(j.id, j);
-    } catch (e) {}
-  }
-}
-
-function newId() {
-  return new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 7);
-}
-
-function cleanHandle(s) {
-  return String(s || '')
-    .trim()
-    .replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/i, '')
-    .replace(/^@/, '')
-    .split(/[/?#]/)[0]
-    .trim();
-}
-
-function todayBangkok() {
-  return new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 10);
-}
+const sendErr = (res, e) => res.status(e instanceof JobError ? e.status : 500).json({ error: e.message });
 
 /** 健康检查 */
 const APP_VERSION = require('./package.json').version;
@@ -445,16 +304,14 @@ app.get('/api/videodb/stats', (req, res) => res.json(videodb.stats()));
 
 app.get('/api/videos/:vid', (req, res) => {
   const v = videodb.load().videos[String(req.params.vid)];
-  if (!v) return res.status(404).json({ error: 'not found' });
+  // 还没有历史快照不是错误：返回空历史，前端显示「暂无快照」
+  if (!v) return res.json({ vid: String(req.params.vid), found: false, history: [] });
   res.json(v);
 });
 
 /* ==================== 应用自更新（发布后由应用自己拉，不再手动装） ====================
-   两条更新通道，别再混着走：
-     ① **模块**（tiktok-login / seller-import / seller-api…）—— 启动时自动比对索引并升级，
-        改模块不需要装应用。绝大多数修复都落在这一层。
-     ② **应用本体**（asar 里的 server.js / public/*）—— 必须先发版，再由这里检查更新，
-        拿到安装包后一键静默安装。
+   应用是一个整体（2.1 起不再有可单独升级的模块），更新只有一条通道：
+   先发版，再由这里检查更新，拿到安装包后一键静默安装。
    ⚠️ 仓库是私有的，GitHub API 要带 token（.env 的 UPDATE_TOKEN）；没有 token 就只报当前版本。 */
 const UPDATE_REPO = process.env.UPDATE_REPO || 'liyangru/tiktok-scraper';
 const UPDATE_FILE = path.join(BASE_DIR, 'data', 'update.json');
@@ -582,294 +439,82 @@ app.get('/api/health', (req, res) => {
     headless: process.env.BROWSER_HEADLESS === '1',
     version: APP_VERSION,
     build: BUILD_STAMP,
-    autoUpgraded: AUTO_UPGRADED,
   });
 });
 
 /** 提交抓取任务 */
-app.post('/api/scrape', async (req, res) => {
-  const body = req.body || {};
-  const raw = Array.isArray(body.handles) ? body.handles : String(body.handles || '').split(/[\n,，;；\s]+/);
-  const handles = [...new Set(raw.map(cleanHandle).filter(Boolean))];
-  if (!handles.length) return res.status(400).json({ error: '请至少填写一个 TikTok 用户名' });
-  if (handles.length > 20) return res.status(400).json({ error: '单次最多 20 个账号' });
-  for (const h of handles) {
-    if (!/^[A-Za-z0-9._]{2,40}$/.test(h)) return res.status(400).json({ error: `用户名格式不对: ${h}` });
-  }
-
+app.post('/api/scrape', (req, res) => {
   const chrome = scraper.resolveChromePath();
   if (!chrome && process.env.BROWSER_HEADLESS !== '1') {
     return res.status(500).json({ error: '没找到 Chrome/Chromium，请设置环境变量 CHROME_PATH 指向浏览器可执行文件' });
   }
-
-  let to = body.to || todayBangkok();
-  // ⚠️ 本期边界必须在下面被扩写成并集之前就定下来，否则期次信息永久丢失
-  const currentFrom = body.from || to.slice(0, 8) + '01'; // 空 = 当月 1 号
-  const currentTo = to;
-  // 对比期：抓取范围扩成「本期 ∪ 对比期」，出结果后再按期切分对比
-  const cmpFrom = body.compareFrom || '';
-  const cmpTo = body.compareTo || '';
-  const hasCompare = !!(cmpFrom && cmpTo);
-  let from2 = currentFrom;
-  if (hasCompare) {
-    if (cmpFrom < from2) from2 = cmpFrom;
-    if (cmpTo > to) to = cmpTo;
-  }
-  const from = from2;
-
-  // 两期重叠 → 同一批视频会同时落进两期，算出来的 delta 一定是错的。
-  // 前端弹窗（cmpOk）已经拦了一道，这里再兜一层：API 可以被别的调用方直接打。
-  if (hasCompare) {
-    const ovFrom = cmpFrom > currentFrom ? cmpFrom : currentFrom;
-    const ovTo = cmpTo < currentTo ? cmpTo : currentTo;
-    if (ovFrom <= ovTo) {
-      return res.status(400).json({
-        error: `对比期与本期有重叠（${ovFrom} ~ ${ovTo}），同一批视频会同时算进两期，对比结果不可用。请把对比期改到本期之前。`,
-      });
-    }
-  }
-
-  const job = {
-    id: newId(),
-    createdAt: new Date().toISOString(),
-    status: 'queued',
-    handles,
-    from, // 抓取区间（= 本期 ∪ 对比期），不是用户选的本期
-    to,
-    /* 期次边界：job 重开后要靠这两个区间把结果拆回「本期 vs 对比期」 */
-    currentFrom,
-    currentTo,
-    compareFrom: hasCompare ? cmpFrom : null,
-    compareTo: hasCompare ? cmpTo : null,
-    concurrency: Math.max(1, Math.min(parseInt(body.concurrency, 10) || CONCURRENCY, 3)),
-    events: [],
-    accounts: [],
-    error: null,
-    finishedAt: null,
-  };
-  jobs.set(job.id, job);
-  saveJob(job);
-  res.json({ id: job.id, from, to, handles, concurrency: job.concurrency });
-
-  runJob(job).catch((e) => {
-    job.status = 'error';
-    job.error = e.message || String(e);
-    job.finishedAt = new Date().toISOString();
-    saveJob(job);
-  });
-});
-
-async function runJob(job) {
-  job.status = 'running';
-  saveJob(job);
-
-  const push = (ev) => {
-    job.events.push({ t: Date.now(), ...ev });
-    if (job.events.length > 500) job.events.splice(0, job.events.length - 500);
-    // 记录每账号状态
-    if (ev.type === 'account-start') {
-      let a = job.accounts.find((x) => x.handle === ev.handle);
-      if (!a) {
-        a = { handle: ev.handle, state: 'running', found: 0, count: 0 };
-        job.accounts.push(a);
-      }
-      a.state = 'running';
-      a.attempt = ev.attempt || 1;
-    } else if (ev.type === 'account-retry') {
-      const a = job.accounts.find((x) => x.handle === ev.handle);
-      if (a) {
-        a.state = 'retrying';
-        a.attempt = (ev.attempt || 1) + 1;
-      }
-    } else if (ev.type === 'account-progress') {
-      const a = job.accounts.find((x) => x.handle === ev.handle);
-      if (a) a.found = ev.found;
-    } else if (ev.type === 'account-done') {
-      const a = job.accounts.find((x) => x.handle === ev.handle);
-      if (a) {
-        a.state = 'done';
-        a.count = ev.count;
-        a.stats = ev.stats;
-      }
-    }
-  };
-
-  const results = await scraper.scrapeMany(job.handles, {
-    from: job.from,
-    to: job.to,
-    concurrency: job.concurrency,
-    maxScrolls: MAX_SCROLLS,
-    onEvent: push,
-  });
-
-  for (const h of job.handles) {
-    const a = job.accounts.find((x) => x.handle === h);
-    if (a && a.state === 'running') a.state = 'failed';
-  }
-
-  job.results = results.map((r) => ({
-    handle: r.handle,
-    nickname: r.nickname,
-    stats: r.stats,
-    items: r.items,
-  }));
-  job.rowCount = report.toRows(job.results).length;
-  job.status = 'done';
-  job.finishedAt = new Date().toISOString();
-  saveJob(job);
-  // 沉淀进视频数据库（按 vid 去重 + 指标历史），供 AI 分析与趋势使用
   try {
-    const ing = videodb.ingest(job);
-    console.log(`  [db] 视频库：新增 ${ing.added}，更新 ${ing.updated}`);
+    const job = jobStore.create({ ...(req.body || {}), source: 'app' });
+    const { id, from, to, handles, currentFrom, currentTo, compareFrom, compareTo, compareMode } = job;
+    res.json({ id, from, to, handles, currentFrom, currentTo, compareFrom, compareTo, compareMode });
   } catch (e) {
-    console.log(`  ⚠ 视频库写入失败：${e.message}`);
-  }
-}
-
-/** 删除任务（单条） */
-app.delete('/api/jobs/:id', (req, res) => {
-  const id = req.params.id;
-  try {
-    jobs.delete(id);
-    const f = path.join(DATA_DIR, `${id}.json`);
-    if (fs.existsSync(f)) fs.unlinkSync(f);
-    res.json({ ok: true, id });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
-/** 批量删除任务 */
+/** 停止任务：真正中断后台抓取（关闭浏览器），已完成账号的数据保留 */
+app.post('/api/jobs/:id/stop', (req, res) => {
+  try {
+    const job = jobStore.stop(req.params.id);
+    res.json({ ok: true, status: job.status });
+  } catch (e) {
+    sendErr(res, e);
+  }
+});
+
+/** 删除任务（单条 / 批量） */
+app.delete('/api/jobs/:id', (req, res) => res.json({ ok: true, deleted: jobStore.remove([req.params.id]) }));
 app.post('/api/jobs/delete', (req, res) => {
   const ids = (req.body && req.body.ids) || [];
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: '没有选中任务' });
-  let n = 0;
-  for (const id of ids) {
-    try {
-      jobs.delete(id);
-      const f = path.join(DATA_DIR, `${id}.json`);
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-      n++;
-    } catch (_) {}
-  }
-  res.json({ ok: true, deleted: n });
+  res.json({ ok: true, deleted: jobStore.remove(ids) });
 });
-
-/** 查询任务 */
-/** job 的期次区间（兼容本修复之前建的旧 job：缺字段就退化成「只有本期」） */
-function jobRanges(job) {
-  const currentFrom = job.currentFrom || job.from;
-  const currentTo = job.currentTo || job.to;
-  return {
-    currentFrom,
-    currentTo,
-    compareFrom: job.compareFrom || null,
-    compareTo: job.compareTo || null,
-  };
-}
 
 app.get('/api/jobs/:id', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job) return res.status(404).json({ error: '任务不存在' });
-  const ranges = jobRanges(job);
-  const rows = job.results ? report.toRows(job.results, ranges) : [];
-  // 创作中心 / 卖家中心已登录 → 自动把两边平台数据合并进行（无需手动导入）
-  await applySync(rows, ranges, job);
-  res.json({
-    id: job.id,
-    status: job.status,
-    error: job.error,
-    from: job.from,
-    to: job.to,
-    currentFrom: ranges.currentFrom,
-    currentTo: ranges.currentTo,
-    compareFrom: ranges.compareFrom,
-    compareTo: ranges.compareTo,
-    handles: job.handles,
-    createdAt: job.createdAt,
-    finishedAt: job.finishedAt,
-    accounts: job.accounts,
-    // 老 job / 手工造的数据可能没有 events，直接 slice 会把整个服务打崩
-    events: (job.events || []).slice(-60),
-    rows,
-    periodCompare: rows.length ? report.periodCompare(rows, ranges) : null,
-    summary: job.results
-      ? job.results.map((r) => ({ handle: r.handle, nickname: r.nickname, stats: r.stats, ...report.agg(rows.filter((x) => x.account === r.handle)) }))
-      : [],
-  });
+  res.json(await jobStore.view(job));
 });
 
-/** 历史任务 */
-app.get('/api/jobs', (req, res) => {
-  const list = [...jobs.values()]
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, 50)
-    .map((j) => {
-      const rg = jobRanges(j);
-      return {
-        id: j.id,
-        status: j.status,
-        handles: j.handles,
-        from: j.from,
-        to: j.to,
-        currentFrom: rg.currentFrom,
-        currentTo: rg.currentTo,
-        compareFrom: rg.compareFrom,
-        compareTo: rg.compareTo,
-        createdAt: j.createdAt,
-        rowCount: j.rowCount || 0,
-      };
-    });
-  res.json(list);
+/** 历史任务（含命令行 / 插件建的任务） */
+app.get('/api/jobs', (req, res) => res.json(jobStore.list()));
+
+/** 简报：给「复制简报」和插件用的精简摘要 */
+app.get('/api/jobs/:id/summary', async (req, res) => {
+  const job = jobStore.get(req.params.id);
+  if (!job || !jobStore.isFinished(job)) return res.status(404).json({ error: '任务不存在或尚未完成' });
+  res.json(await jobStore.summarize(job, { cartMode: req.query.cart === 'trim' ? 'trim' : 'mean' }));
 });
 
-/* ⚠️ 这里曾经重复注册过一次「删除单个任务」的路由（上面 609 行那个才是生效的），
-   第二个永远不会被走到 —— 死代码。删掉，避免以后改错地方。 */
-
-function rangeLabel(job) {
-  const rg = jobRanges(job);
-  // 有对比期时，副标题要把两期都写清楚（job.from/to 只是并集，看不出期次）
-  if (rg.compareFrom && rg.compareTo) {
-    return `${rg.currentFrom}~${rg.currentTo}  vs  ${rg.compareFrom}~${rg.compareTo}`;
-  }
-  return `${job.from} ~ ${job.to}`;
-}
-
-/** 导出 Excel */
+const langOf = (req) => (['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh');
 app.get('/api/jobs/:id/export.xlsx', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).send('任务不存在或尚未完成');
-  const ranges = jobRanges(job);
-  const rows = report.toRows(job.results, ranges);
-  await applySync(rows, ranges, job);
-  if (!rows.length) return res.status(404).send('该区间内没有数据');
-  const lang = ['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh';
-  const wb = await report.buildWorkbook({
-    rows,
-    accounts: job.results.map((r) => ({ handle: r.handle, nickname: r.nickname, stats: r.stats })),
-    title: `TikTok · ${job.handles.join(' / ')}`,
-    rangeLabel: rangeLabel(job),
-    ranges,
-    lang,
-  });
-  const name = `tiktok_${job.handles.join('_').slice(0, 40)}_${job.from}_${job.to}_${lang}.xlsx`;
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-  await wb.xlsx.write(res);
-  res.end();
+  try {
+    const { name, buffer } = await jobStore.exportXlsx(job, langOf(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
+    res.end(buffer);
+  } catch (e) {
+    res.status(e.status || 500).send(e.message);
+  }
 });
-
-/** 导出 CSV */
 app.get('/api/jobs/:id/export.csv', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).send('任务不存在或尚未完成');
-  const rows = report.toRows(job.results, jobRanges(job));
-  await applySync(rows, jobRanges(job), job);
-  const lang = ['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh';
-  const name = `tiktok_${job.handles.join('_').slice(0, 40)}_${job.from}_${job.to}_${lang}.csv`;
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-  res.send(report.buildCsv(rows, lang));
+  try {
+    const { name, text } = await jobStore.exportCsv(job, langOf(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
+    res.send(text);
+  } catch (e) {
+    res.status(e.status || 500).send(e.message);
+  }
 });
 
 /**
@@ -881,12 +526,12 @@ app.get('/api/jobs/:id/export.csv', async (req, res) => {
  * 这个端点把同步结果写回 job.rows，前端重新拉一次就能看到 avgWatchTime / finishRate 等字段。
  */
 app.post('/api/jobs/:id/sync', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).json({ error: '任务不存在或尚未完成' });
   if (!SYNC_PROVIDERS.length) return res.status(400).json({ error: '没有可用的平台数据源' });
-  const rows = report.toRows(job.results, jobRanges(job));
+  const rows = report.toRows(job.results, jobStore.ranges(job));
   const before = rows.filter((r) => r.avgWatchTime !== undefined || r.gmv !== undefined || r.finishRate !== undefined).length;
-  await applySync(rows, jobRanges(job), job);
+  await applySync(rows, jobStore.ranges(job), job);
   const after = rows.filter((r) => r.avgWatchTime !== undefined || r.gmv !== undefined || r.finishRate !== undefined).length;
   // 回写，让后续导出与前端刷新都能拿到这份数据
   job.rows = rows;
@@ -907,14 +552,13 @@ app.post('/api/jobs/:id/sync', async (req, res) => {
   });
 });
 
-loadJobsFromDisk();
 
 /* ================= AI 经营分析（默认自动出，不需要点击） =================
  * 用户要求：抓到数据后就有固定模板和维度的 AI 分析，直接放在概览里；
  * 设了对比期时必须结合对比期一起分析。LLM 配置复用 .env（LLM_*）。
  * 结果缓存进 job.json（aiBrief / aiBriefAt），同一个任务不重复花钱。
  */
-const AI_BRIEF_MARKDOWN = (d) => `你是 TikTok 电商内容运营专家。基于下面这份本机抓取的运营数据，输出一份「经营分析简报」。
+const AI_BRIEF_MARKDOWN = (d) => `你是 TikTok 电商内容运营专家。基于下面这份本机抓取的运营数据，输出一份「AI 分析」。
 用简体中文，Markdown，总长 500 字以内，直接给判断和动作，禁止空话套话。固定输出以下章节：
 
 ### 一句话结论
@@ -954,27 +598,34 @@ function briefAggText(label, a) {
 }
 
 app.get('/api/jobs/:id/ai-brief', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).json({ error: '任务不存在或尚未完成' });
   if (job.aiBrief) return res.json({ ok: true, cached: true, brief: job.aiBrief, at: job.aiBriefAt });
-  const ranges = jobRanges(job);
+  const ranges = jobStore.ranges(job);
   const rows = job.rows && job.rows.length ? job.rows : report.toRows(job.results, ranges);
   if (!rows.length) return res.status(400).json({ error: '该任务没有数据' });
   await applySync(rows, ranges, job); // 平台数据（GMV/完播率…）能合多少合多少
 
-  const pc = report.periodCompare(rows, ranges);
-  const top = [...rows].sort((a, b) => b.views - a.views).slice(0, 8);
-  const worst = [...rows].sort((a, b) => a.views - b.views).slice(0, 3);
-  const ecd = report.ecCompare(rows);
+  const hasCompare = !!(ranges.compareFrom && ranges.compareTo);
+  const cur = report.currentRows(rows);
+  const cmpRows = rows.filter((r) => TTMetrics.inCompare(r));
+  const pcCur = report.agg(cur);
+  const pcCmp = report.agg(cmpRows);
+  const top = [...cur].sort((a, b) => b.views - a.views).slice(0, 8);
+  const worst = [...cur].sort((a, b) => a.views - b.views).slice(0, 3);
+  const ecd = report.ecCompare(cur);
+  const curDays = TTPeriod.span(ranges.currentFrom, ranges.currentTo);
+  const cmpDays = hasCompare ? TTPeriod.span(ranges.compareFrom, ranges.compareTo) : 0;
 
   const lines = [];
   lines.push(`账号：${(job.results || []).map((a) => `@${a.handle}（粉丝 ${(a.stats && a.stats.followerCount) || '?'}）`).join('；')}`);
-  lines.push(`本期区间：${ranges.currentFrom} ~ ${ranges.currentTo}`);
-  lines.push(briefAggText('本期', pc.current));
-  if (pc.hasCompare) {
-    lines.push(`对比期区间：${ranges.compareFrom} ~ ${ranges.compareTo}`);
-    lines.push(briefAggText('对比期', pc.compare));
-    if (!pc.compare.n) lines.push('对比期没有发布视频（当期无内容可对比）');
+  lines.push(`本期区间：${ranges.currentFrom} ~ ${ranges.currentTo}（${curDays} 天）`);
+  lines.push(briefAggText('本期', pcCur));
+  if (hasCompare) {
+    lines.push(`对比期区间：${ranges.compareFrom} ~ ${ranges.compareTo}（${cmpDays} 天）`);
+    lines.push(briefAggText('对比期', pcCmp));
+    if (curDays !== cmpDays) lines.push('两期天数不同：比较时请以日均和条均为准，不要直接比总量');
+    if (!pcCmp.n) lines.push('对比期没有发布视频（当期无内容可对比）');
   } else {
     lines.push('未设置对比期');
   }
@@ -994,7 +645,7 @@ app.get('/api/jobs/:id/ai-brief', async (req, res) => {
     ], { maxTokens: 1400 });
     job.aiBrief = brief;
     job.aiBriefAt = new Date().toISOString();
-    saveJob(job);
+    jobStore.save(job);
     res.json({ ok: true, cached: false, brief, at: job.aiBriefAt });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1003,17 +654,17 @@ app.get('/api/jobs/:id/ai-brief', async (req, res) => {
 
 /** 清除缓存强制重新分析（前端「重新分析」用） */
 app.delete('/api/jobs/:id/ai-brief', (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job) return res.status(404).json({ error: '任务不存在' });
   job.aiBrief = null;
   job.aiBriefAt = null;
-  saveJob(job);
+  jobStore.save(job);
   res.json({ ok: true });
 });
 
 /* ================= 双平台数据同步框架（创作中心 / 卖家中心） ================= */
 /**
- * 模块通过 MODULE_CTX.registerSync({ platform, collect }) 注册同步源。
+ * 内置功能通过 FEATURE_CTX.registerSync({ platform, collect }) 注册同步源。
  * collect({ rows, ranges, job }) 返回 { <vid>: { 字段: 值, … } }（可以是 async）。
  * 核心在出报表时把这些字段**合并进右侧视频列表的行**：
  *   - 重合字段（播放/点赞等以 TikTok 抓取为准）一律剔除，绝不覆盖 —— 数据原则：TikTok 为主
@@ -1059,42 +710,47 @@ async function applySync(rows, ranges, job) {
   return rows;
 }
 
-/* ================= 模块加载 ================= */
-
-/**
- * 模块能拿到的核心能力。
- * ⚠️ 模块在**主进程内**运行，不是沙箱 —— 所以只从本仓库安装模块。
+/* ================= 内置功能 =================
+ * 2.1 起取消「模块商店」：创作中心登录、卖家中心数据、AI 分析都是应用的固定组成部分，
+ * 代码按功能拆在 lib/features/ 下，启动时直接挂载。单个功能挂载失败只记日志，不影响主程序。
  */
-const MODULE_CTX = {
+const FEATURE_CTX = {
   baseDir: BASE_DIR,
   dataDir: DATA_DIR,
   settings,
   envfile,
-  log: (m) => console.log(`  [module] ${m}`),
+  log: (m) => console.log(`  [feature] ${m}`),
   registerSync: (p) => {
     if (p && p.platform && typeof p.collect === 'function') SYNC_PROVIDERS.push(p);
   },
-  /* ⚠️ 模块能 require 的库只限这里给的 —— pkg 打包后模块在快照外，自己 require 不到核心依赖 */
   core: {
     scraper,
     report,
     exceljs: require('exceljs'),
     envfile,
-    chromium: require('patchright').chromium, // 套壳浏览器用（卖家中心登录）
+    chromium: require('patchright').chromium, // 套壳浏览器用（创作中心 / 卖家中心登录）
     llm,
     videodb,
   },
 };
 
-/** 视频解析与下载：**核心默认功能**（Round 6 起不再是模块），路由不变 */
+/** 视频解析与下载 */
 videodl.register(app, {
   core: { scraper },
   log: (m) => console.log(`  [videodl] ${m}`),
   getOutDir: resolveDownloadDir,
 });
 
-/** 已启用的模块在此挂载；单个模块加载失败不影响主程序与其它模块 */
-const LOADED_MODULES = modules.loadEnabled(app, MODULE_CTX, (m) => console.log(`  ⚠ 模块：${m}`));
+const FEATURES = ['creator-login', 'seller-center', 'ai-video'];
+const LOADED_FEATURES = [];
+for (const name of FEATURES) {
+  try {
+    require(`./lib/features/${name}.js`).register(app, FEATURE_CTX);
+    LOADED_FEATURES.push(name);
+  } catch (e) {
+    logCrash(`feature ${name}`, e);
+  }
+}
 
 /**
  * ⚠️ /api/* 未命中任何路由时，express 默认回一页 HTML 404 ——
@@ -1145,11 +801,11 @@ function listen(port, tries = 50) {
       console.log('');
       console.log('  TikTok 多账号数据抓取服务已启动');
       console.log(`  → http://${HOST}:${port}`);
-      console.log(`  浏览器: ${chrome || '未找到（请先安装模块或检查载荷）'}`);
+      console.log(`  浏览器: ${chrome || '未找到（请检查自带浏览器载荷）'}`);
       console.log(`  存储位置: ${resolveDownloadDir()}`);
       console.log(`  并发数: ${CONCURRENCY}   有头模式: ${process.env.BROWSER_HEADLESS === '1' ? '否' : '是'}`);
       console.log(`  访问口令: ${ACCESS_TOKEN ? '已启用' : '未启用（仅限本机使用）'}`);
-      console.log(`  模块: ${LOADED_MODULES.length ? LOADED_MODULES.join(', ') : '无（可在设置里下载）'}`);
+      console.log(`  内置功能: ${LOADED_FEATURES.join(', ')}`);
       console.log('');
       writeRuntime(port);
       /* ⚠️ 这里**不打开任何浏览器** —— 用户硬要求：所有界面只在应用窗口内。
@@ -1174,58 +830,10 @@ function listen(port, tries = 50) {
 
 /** 启动服务，resolve 实际监听端口 */
 function start(portOverride) {
-  return listen(portOverride || PORT).then((port) => {
-    // 后台自动升级：exe 自带的模块源（resources/modules-dist）里有比本机已装更新的版本时，
-    // 静默重装（下载 → sha256 校验 → 原子替换）。用户「登录了没作用」的根因就是
-    // 本机模块停在旧版、新路由不存在，而要求用户手动去设置里点升级不现实。
-    autoUpgradeBuiltins();
-    return port;
-  });
+  return listen(portOverride || PORT);
 }
 
-/** 用内置模块源静默升级已装模块；失败只记日志，绝不影响启动与使用 */
-const AUTO_UPGRADED = [];
-async function autoUpgradeBuiltins() {
-  try {
-    const index = await modules.fetchIndex();
-    const installed = modules.installedMap();
-    const known = settings.load().known || {};
-    for (const entry of index) {
-      const cur = installed[entry.id];
-      /* ① 从没装过的新模块：静默装上并启用。
-         ⚠️ 这是「不要每次更新都走安装流程」的关键 ——
-            功能改动几乎都在模块层，模块能自己落地，用户就不必重装整个应用。
-            但「用户主动删过」的模块（settings.known 里有记录）绝不复活，否则删除就没意义了。 */
-      if (!cur) {
-        if (known[entry.id]) continue;
-        try {
-          console.log(`  [auto] 发现新模块 ${entry.id}@${entry.version}，静默安装`);
-          await modules.install(entry, (s) => console.log(`  [auto] ${entry.id} ${s}`));
-          const r = modules.enableWithDeps(entry.id);
-          AUTO_UPGRADED.push({ id: entry.id, from: '', to: entry.version, installed: true });
-          console.log(`  [auto] ${entry.id} 已安装并启用${r.missing.length ? '（缺依赖 ' + r.missing.join(',') + '）' : ''}`);
-        } catch (e) {
-          console.log(`  ⚠ [auto] ${entry.id} 安装失败：${e.message}`);
-        }
-        continue;
-      }
-      /* ② 已装的版本旧了：静默升级 */
-      if (!entry.version || cur.version === entry.version) continue;
-      try {
-        console.log(`  [upgrade] ${entry.id}: ${cur.version} → ${entry.version}（内置源自动升级）`);
-        await modules.install(entry, (s) => console.log(`  [upgrade] ${entry.id} ${s}`));
-        AUTO_UPGRADED.push({ id: entry.id, from: cur.version, to: entry.version });
-        console.log(`  [upgrade] ${entry.id} 完成，重启后新路由生效`);
-      } catch (e) {
-        console.log(`  ⚠ [upgrade] ${entry.id} 失败：${e.message}`);
-      }
-    }
-  } catch (e) {
-    console.log(`  ⚠ [upgrade] 内置模块源不可用：${e.message}`);
-  }
-}
-
-module.exports = { app, start, modules, settings };
+module.exports = { app, start, settings };
 
 if (require.main === module) {
   start().catch((e) => {
