@@ -573,6 +573,14 @@ const AI_BRIEF_MARKDOWN = (d) => `你是 TikTok 电商内容运营专家。基�
 ### 转化与挂车
 （挂车视频占比与播放占比、挂车 vs 非挂车的互动差；给「该不该加大挂车」一个明确判断）
 
+### 深度数据（若已登录创作/商家中心）
+（有完播率/平均观看时长就分析内容留存；有 GMV/订单/GPM 就分析哪类视频真正带来转化；
+若显示「未接入」，明确告诉用户：登录创作中心/卖家中心可解锁这些指标）
+
+### 内容与话题画像（扩展字段）
+（话题标签数量与玩法、挑战活动、@提及、锚点类型、合拍/拼接开关、AIGC 标记——
+指出哪些内容手法与高播放相关，可复制的具体动作）
+
 ### 对比期诊断
 （没有对比期就写「本期为独立分析」；有则必须给：环比变化最大的 2-3 个指标、涨跌原因推测、机会或风险）
 
@@ -632,11 +640,32 @@ app.get('/api/jobs/:id/ai-brief', async (req, res) => {
   lines.push(`TOP 视频：${top.map((r) => `「${(r.desc || '').slice(0, 26)}」${r.date} ${r.time} ${r.views}播放 互率${fmtPct(r.inter)}${r.isEC ? ' 挂车' : ''}`).join('；')}`);
   lines.push(`最差视频：${worst.map((r) => `「${(r.desc || '').slice(0, 20)}」${r.views}播放`).join('；')}`);
   lines.push(`挂车 vs 非挂车：挂车均播 ${ecd.ec.n ? ecd.ec.avg : 0} / 非挂车均播 ${ecd.non.n ? ecd.non.avg : 0}；挂车互动率 ${fmtPct(ecd.ec.inter)} / 非挂车 ${fmtPct(ecd.non.inter)}`);
-  const ecRows = rows.filter((r) => r.gmv !== undefined);
-  if (ecRows.length) {
-    const gmvSum = ecRows.reduce((s, r) => s + (Number(r.gmv) || 0), 0);
-    lines.push(`卖家中心已匹配 ${ecRows.length} 条，合计 GMV ${gmvSum.toFixed(2)}`);
+  // ---- 深度数据：创作中心 / 商家中心登录后才有的指标 ----
+  const sumField = (arr, k) => arr.reduce((s, r) => s + (Number(r[k]) || 0), 0);
+  const depth = ['finishRate','completionRate','avgWatchTime','newFans','gmv','orders','productClicks','gpm','ctr','attributedGmv','indirectGmv'];
+  const hasDepth = cur.some((r) => depth.some((k) => r[k] !== undefined && r[k] !== null));
+  if (hasDepth) {
+    const parts = [];
+    for (const k of ['finishRate','completionRate','avgWatchTime','newFans']) {
+      const v = cur.filter((r)=>r[k]!==undefined).map((r)=>Number(r[k])||0);
+      if (v.length) parts.push(`${k} 均值 ${(v.reduce((a,b)=>a+b,0)/v.length).toFixed(2)}${k.includes('Rate')?'%':k==='avgWatchTime'?'s':''}（${v.length} 条）`);
+    }
+    for (const k of ['gmv','orders','productClicks','gpm','ctr','attributedGmv','indirectGmv']) {
+      const v = sumField(cur, k);
+      if (v) parts.push(`${k} 合计 ${v.toFixed(2)}`);
+    }
+    lines.push(`【深度数据·已登录】${parts.join('；')}`);
+  } else {
+    lines.push('【深度数据】未接入——登录创作中心可看完整播放/完播率/流量来源，登录卖家中心可看 GMV/订单/GPM，能显著提升分析深度');
   }
+  // 内容手法扩展字段汇总
+  const exTags = sumField(cur, 'hashtagCount');
+  const exMentions = sumField(cur, 'mentionCount');
+  const exChal = [...new Set(cur.flatMap((r) => r.challengeNames || []))].slice(0, 6);
+  const exAnchor = [...new Set(cur.flatMap((r) => r.anchorTypes || []))];
+  const exDuet = cur.filter((r)=>r.duetEnabled).length, exStitch = cur.filter((r)=>r.stitchEnabled).length;
+  const exAIGC = cur.filter((r)=>r.isAIGC || r.aigcDesc).length;
+  lines.push(`【内容手法】话题标签合计 ${exTags} 个（条均 ${cur.length?(exTags/cur.length).toFixed(1):0}）、@提及 ${exMentions}；挑战活动 ${exChal.length?exChal.join('/'):'无'}；锚点类型 ${exAnchor.length?exAnchor.join('/'):'无'}；允许合拍 ${exDuet} 条、拼接 ${exStitch} 条；AIGC 标记 ${exAIGC} 条`);
 
   try {
     const brief = await llm.chat([

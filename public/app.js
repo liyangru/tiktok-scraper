@@ -145,7 +145,7 @@ const TTApp = (() => {
     // 右栏给出等待中的空状态，而不是一片空白
     $('#emptyState').hidden = false;
     $('#emptyTitle').innerHTML = `<span class="spin"></span> ${esc(t('emptyScraping'))}`;
-    $('#emptySub').textContent = t('emptyScrapingSub');
+    $('#emptySub').innerHTML = `<div class="empty-progress" id="emptyProgress"><i></i></div><span>${esc(t('emptyScrapingSub2'))}</span>`;
     try {
       const r = await jpost('/api/scrape', body);
       state.jobId = r.id;
@@ -167,6 +167,35 @@ const TTApp = (() => {
       toast(t('submitFailed', { msg: e.message }), 'err');
       $('#emptyTitle').textContent = t('emptyTitle');
       $('#emptySub').textContent = t('emptySub');
+    }
+  }
+
+  /** 右栏空状态里的进度条：与左栏共用同一套百分比算法 */
+  function updateEmptyProgress(j) {
+    const bar = document.getElementById('emptyProgress');
+    if (!bar) return;
+    const acc = j.accounts || [];
+    let pct = 0;
+    if (acc.length) {
+      const frac = (a) => {
+        if (['done','failed','stopped'].includes(a.state)) return 1;
+        if (a.state === 'queued') return 0;
+        switch (a.stage) {
+          case 'open': return 0.05;
+          case 'profile': return 0.1;
+          case 'scroll': return 0.14 + 0.78 * (typeof a.cover === 'number' ? a.cover : 0);
+          case 'filter': return 0.95;
+          default: return 0.02;
+        }
+      };
+      pct = Math.round(acc.reduce((s,a)=>s+frac(a),0)/acc.length*100);
+    }
+    const i = bar.querySelector('i');
+    if (i) i.style.width = pct + '%';
+    const sub = document.getElementById('emptySub');
+    if (sub) {
+      const done = acc.filter(a=>a.state==='done').length;
+      sub.lastChild && (sub.lastChild.textContent = `${done}/${acc.length || (j.handles||[]).length} 个账号 · ${pct}% · 结果实时汇总中`);
     }
   }
 
@@ -232,6 +261,7 @@ const TTApp = (() => {
       if (TTProgress.isRunning(j)) {
         state.task = j;
         TTProgress.render(j);
+        updateEmptyProgress(j);
         renderStartBtn();
         pollTimer = setTimeout(tick, 1200);
         return;

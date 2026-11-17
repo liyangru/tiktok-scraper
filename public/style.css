@@ -626,3 +626,21 @@ body.picking .pick-col { display: table-cell; }
   .cx-summary { flex-basis: 100%; justify-content: flex-start; order: 3; padding-left: 26px; }
   .search, .search:focus { width: 100%; }
 }
+
+
+/* ==== v2.1.2 体验优化：空状态进度条 + 表格自适应密度 ==== */
+.empty-progress { width: min(360px, 80%); height: 6px; border-radius: 999px; background: var(--line-soft); overflow: hidden; margin: 4px auto 10px; }
+.empty-progress i { display: block; height: 100%; width: 0; border-radius: 999px; background: var(--ink); transition: width .5s var(--ease); }
+/* 右栏变窄时：表格字号与内边距收紧，让更多字段同屏可见（不牺牲可读性下限 11px） */
+@media (max-width: 1180px) {
+  .grid { grid-template-columns: 330px minmax(0, 1fr); gap: 16px; }
+  table { font-size: 12px; }
+  thead th, tbody td { padding: 8px 5px; }
+  .row-cover { width: 34px; height: 34px; }
+}
+@media (max-width: 980px) {
+  .grid { grid-template-columns: 300px minmax(0, 1fr); gap: 12px; }
+  table { font-size: 11px; }
+  thead th, tbody td { padding: 6px 4px; }
+  .desc .d { -webkit-line-clamp: 1; }
+}

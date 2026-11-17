@@ -166,14 +166,36 @@ function closeSplash() {
  * 一开就被屏幕切掉一截。这里按当前屏幕可用区域收缩，同时保留原来的理想尺寸上限。
  */
 function fitWindowSize() {
+  // 默认就是大多数人舒服的中等窗口，不主动最大化、不铺满屏幕。
+  // 用户手动缩放后记住尺寸/位置，下次原样恢复。
+  try {
+    const saved = loadWinBounds();
+    if (saved && saved.width >= 700 && saved.height >= 500) {
+      return { width: saved.width, height: saved.height,
+               minWidth: 760, minHeight: 520, x: saved.x, y: saved.y };
+    }
+  } catch (_) {}
   try {
     const wa = screen.getPrimaryDisplay().workAreaSize;
-    const width = Math.min(1500, Math.max(880, wa.width - 60));
-    const height = Math.min(960, Math.max(600, wa.height - 60));
-    return { width, height, minWidth: Math.min(1080, width), minHeight: Math.min(720, height) };
+    // 默认 1280×820，只在大屏上留足边距；不会超过可用区域
+    const width = Math.min(1280, Math.max(760, wa.width - 160));
+    const height = Math.min(820, Math.max(520, wa.height - 140));
+    return { width, height, minWidth: 760, minHeight: 520 };
   } catch (_) {
-    return { width: 1500, height: 960, minWidth: 1080, minHeight: 720 };
+    return { width: 1280, height: 820, minWidth: 760, minHeight: 520 };
   }
+}
+/** 记住/读取窗口尺寸与位置（写入 userData/window-bounds.json） */
+function loadWinBounds() {
+  try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'window-bounds.json'), 'utf8')); }
+  catch (_) { return null; }
+}
+function saveWinBounds() {
+  try {
+    if (!win || win.isDestroyed() || win.isMaximized()) return;
+    fs.writeFileSync(path.join(app.getPath('userData'), 'window-bounds.json'),
+      JSON.stringify(win.getBounds()));
+  } catch (_) {}
 }
 
 /**
@@ -317,6 +339,7 @@ function createWindow(port) {
       }
     } catch (_) {}
   });
+  win.on('close', () => { saveWinBounds(); });
   win.on('closed', () => {
     if (win === self) win = null;
   });
