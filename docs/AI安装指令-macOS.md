@@ -1,6 +1,6 @@
 # TikTokScraper v2.0.2 · macOS 安装指令（复制整段给 AI 执行）
 
-你现在要在 Mac 上帮我安装 TikTokScraper v2.0.2 极简分析版。严格按下面的步骤执行，每步给出实际命令和输出，失败就贴原始报错并停止，不要猜测。
+你现在要在 Mac 上帮我安装 TikTokScraper v2.0.2 完整功能版（浏览器抓取 + AI 分析）。严格按下面的步骤执行，每步给出实际命令和输出，失败就贴原始报错并停止，不要猜测。
 
 ## 环境前提
 - 芯片判断：先确认是 Apple Silicon（M 系列）还是 Intel，两者包不同
@@ -26,7 +26,7 @@ curl -L -o TikTokScraper-2.0.2-arm64-mac.zip \
   "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-arm64-mac.zip"
 ls -lh TikTokScraper-2.0.2-arm64-mac.zip
 ```
-判定：约 129 MB。
+判定：约 400 MB（含自带 Chromium 浏览器载荷）。
 
 ### 2B. 下载 x64 包（Intel）
 ```bash
@@ -35,7 +35,7 @@ curl -L -o TikTokScraper-2.0.2-x64-mac.zip \
   "https://github.com/liyangru/tiktok-scraper/releases/download/v2.0.2/TikTokScraper-2.0.2-x64-mac.zip"
 ls -lh TikTokScraper-2.0.2-x64-mac.zip
 ```
-判定：约 133 MB。
+判定：约 400 MB（含自带 Chromium 浏览器载荷）。
 
 ### 3. 解压
 arm64：

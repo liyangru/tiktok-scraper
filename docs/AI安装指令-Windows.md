@@ -1,6 +1,6 @@
 # TikTokScraper v2.0.2 · Windows 安装指令（复制整段给 AI 执行）
 
-你现在要在 Windows 机器上帮我安装 TikTokScraper v2.0.2 极简分析版。严格按下面的步骤执行，每步都要给出实际命令和输出，遇到失败原样报错并停止，不要猜测结果。
+你现在要在 Windows 机器上帮我安装 TikTokScraper v2.0.2 完整功能版（浏览器抓取 + AI 分析）。严格按下面的步骤执行，每步都要给出实际命令和输出，遇到失败原样报错并停止，不要猜测结果。
 
 ## 环境前提
 - 目标机器：Windows 10/11 x64
@@ -22,7 +22,7 @@ Invoke-WebRequest -UseBasicParsing `
   -OutFile $setup
 "sizeMB=" + [math]::Round((Get-Item $setup).Length/1MB,1)
 ```
-判定：文件大小应约 98.2 MB。明显偏小（比如几 KB）说明下载的是错误页，停止。
+判定：文件大小应约 379 MB（含自带 Chromium 浏览器载荷）。明显偏小（比如几 KB）说明下载的是错误页，停止。
 
 ### 2. 检查是否已在运行，避免文件占用
 ```powershell
@@ -77,7 +77,7 @@ Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $proc.Id } |
 判定：进程持续存在即启动成功。应用日志在 `%APPDATA%\TikTokScraper\crash.log`，如启动异常读它。
 
 ### 7. 完成标准
-- 安装包下载约 98 MB
+- 安装包下载约 379 MB（含浏览器）
 - 静默安装 exit=0
 - exe 与注册表版本均为 2.0.2
 - 应用能启动且窗口出现「本地数据模式 · 无浏览器」
