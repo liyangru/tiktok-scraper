@@ -58,3 +58,8 @@ test('MCP：握手、工具列表、参数校验', async () => {
     p.stdin.end();
   }
 });
+
+test('plugin/ 与源文件一致（改了源文件要运行 npm run build:plugin）', () => {
+  const { check } = require('../scripts/build-plugin.js');
+  assert.deepStrictEqual(check(), []);
+});

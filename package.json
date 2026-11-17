@@ -1,6 +1,6 @@
 {
   "name": "tiktok-scraper",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "description": "TikTok 多账号数据抓取与分析工作台（统一应用：抓取 · 周期对比 · 挂车分析 · 导出）",
   "author": "TikTok Scraper",
@@ -20,7 +20,9 @@
     "setup": "node bin/cli.js setup",
     "mcp": "node mcp/server.js",
     "cli": "node bin/cli.js",
-    "agents": "node scripts/setup-agents.js"
+    "agents": "node scripts/setup-agents.js",
+    "build:plugin": "node scripts/build-plugin.js",
+    "build:mcpb": "node scripts/build-plugin.js --mcpb"
   },
   "build": {
     "appId": "com.ttscraper.app",
@@ -63,9 +65,7 @@
       "!bin/**",
       "!skills/**",
       "!.claude-plugin/**",
-      "!.codex-plugin/**",
-      "!.agents/**",
-      "!.mcp.json"
+      "!plugin/**"
     ],
     "extraResources": [
       {

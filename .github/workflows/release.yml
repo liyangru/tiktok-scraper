@@ -159,10 +159,22 @@ jobs:
           tar -czf "${PKG}.tar.gz" -C /tmp "${PKG}"
           ls -la "${PKG}.tar.gz"
 
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # Claude 桌面应用扩展：同一套抓取引擎 + 运行依赖（纯 JS，跨平台），双击安装
+      - name: 打包 Claude 扩展（.mcpb）
+        run: |
+          node scripts/build-plugin.js --mcpb
+          ls -la dist/tiktok-scraper.mcpb
+
       - uses: actions/upload-artifact@v7
         with:
           name: server-bundle
-          path: tiktok-scraper-server-*.tar.gz
+          path: |
+            tiktok-scraper-server-*.tar.gz
+            dist/tiktok-scraper.mcpb
           if-no-files-found: error
 
   # --------------------------------------------------------------- Release

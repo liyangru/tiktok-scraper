@@ -77,7 +77,8 @@ else {
 
 Claude Code 推荐用插件：
   /plugin marketplace add liyangru/tiktok-scraper
-  /plugin install tiktok-scraper@liyangru-tiktok`);
+  /plugin install tiktok-scraper@liyangru-tiktok
+Claude 桌面应用推荐直接安装扩展：npm run build:mcpb 生成 dist/tiktok-scraper.mcpb，双击安装`);
   process.exit(target === 'help' ? 0 : 1);
 }
 if (target !== 'help') console.log('\n首次调用时会自动安装依赖和抓取用浏览器；也可以先运行：npm run setup');

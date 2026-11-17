@@ -2,7 +2,7 @@
 
 **输入用户名 → 自动抓取主页全部视频数据（播放 / 点赞 / 评论 / 分享 / 收藏 / 时长 / 文案 / 话题标签）→ 周期对比、挂车分析 → 导出 Excel。**
 
-三种用法：桌面应用 · Claude Code / Codex 插件（不用开应用）· 命令行。
+三种用法：桌面应用 · Claude 桌面应用扩展 / Claude Code 插件（AI 直接调用，抓取不费 token）· Codex / 命令行。
 
 打包成桌面应用和单文件 exe，**自带浏览器，目标机器不需要装 Node.js，也不需要 Chrome**。
 
@@ -39,10 +39,42 @@
 
 ## 不开应用：在 Claude / Codex 里直接用
 
-同一套抓取和分析，做成了 MCP 插件和命令行。对话里说「抓 @loopearplugs.th 本月数据，和上月同期比」就行。
+和桌面应用**同一套抓取引擎**，做成了 AI 可以调用的工具：抓取在你电脑上后台进行，AI 只收到精简的分析结果（约 1k token），**抓取过程不占对话额度**。对话里说「抓 @loopearplugs.th 本月数据，和上月同期比」就行。
 
 | 用在哪 | 怎么装 |
 |---|---|
+| **Claude 桌面应用（推荐）** | 下载 Releases 里的 `tiktok-scraper.mcpb`，双击安装（依赖已打包，不用装 Node） |
+| **Claude Code** | `/plugin marketplace add liyangru/tiktok-scraper`<br>`/plugin install tiktok-scraper@liyangru-tiktok` |
+| **Codex** | `git clone https://github.com/liyangru/tiktok-scraper && cd tiktok-scraper`<br>`npm run agents codex` |
+| **命令行** | 克隆后 `npm run setup`，然后 `node bin/cli.js scrape loopearplugs.th --preset thisMonth --compare lastMonth --xlsx` |
+
+- 工具：`start_scrape`（抓取，可带对比期，完成时直接返回分析）· `get_scrape`（进度 / 分析摘要）· `list_videos` · `export_report`（Excel / CSV）· `list_scrapes` · `stop_scrape` · `doctor`
+- 装过桌面应用就复用它的浏览器和历史任务；没装则首次使用自动下载一次抓取用浏览器（约 170MB）
+- 插件目录 `plugin/` 和扩展 `.mcpb` 都由 `npm run build:plugin` / `npm run build:mcpb` 从源文件生成，和桌面应用是同一份代码
+
+---|---|
+| **Claude 桌面应用** | 在对话里安装 Releases / PR 附带的 `tiktok-scraper.plugin` |
+| **Claude Code** | `/plugin marketplace add liyangru/tiktok-scraper`<br>`/plugin install tiktok-scraper@liyangru-tiktok` |
+
+对话里说「抓 @loopearplugs.th 本月数据，和上月同期比」就行。功能和桌面应用一致：周期对比（上周 / 上月同期 / 上一周期 / 自定义）、挂车 vs 非挂车（条均 / 去掉最高最低）、最佳发布时段、TOP 视频、导出 Excel / CSV。
+
+- 工具：`prepare_scrape`（规划区间 + 采集脚本）· `submit_account`（交数据，交齐自动出分析）· `get_report` · `list_videos` · `export_report` · `list_scrapes`
+- 插件目录 `plugin/` 由 `npm run build:plugin` 从源文件生成，统计代码和桌面应用是同一套
+
+### 完整版（Codex / 命令行，自带浏览器）
+
+没有 Claude 浏览器的环境用完整版：用自带的 Patchright 浏览器在后台抓取。
+
+| 用在哪 | 怎么装 |
+|---|---|
+| **Codex** | `git clone https://github.com/liyangru/tiktok-scraper && cd tiktok-scraper`<br>`npm run agents codex` |
+| **Claude Desktop（旧版 MCP 配置）** | 克隆后 `npm run agents claude-desktop`，重启 Claude Desktop |
+| **命令行** | 克隆后 `npm run setup`，然后 `node bin/cli.js scrape loopearplugs.th --preset thisMonth --compare lastMonth --xlsx` |
+
+- 首次使用自动安装运行依赖和抓取用 Chromium（约 170MB，只装一次）；装过桌面应用就复用它的浏览器和历史任务
+- 需要 Node.js 18+
+
+---|---|
 | **Claude Code** | `/plugin marketplace add liyangru/tiktok-scraper`<br>`/plugin install tiktok-scraper@liyangru-tiktok` |
 | **Codex** | `git clone https://github.com/liyangru/tiktok-scraper && cd tiktok-scraper`<br>`npm run agents codex` |
 | **Claude Desktop** | 克隆后 `npm run agents claude-desktop`，重启 Claude Desktop |

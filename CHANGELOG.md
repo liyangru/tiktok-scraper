@@ -26,6 +26,18 @@
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-17
+
+### 新增
+- **Claude 桌面应用扩展（`.mcpb`，双击安装）**：和桌面应用同一套抓取引擎，在本机后台抓取，AI 只调用工具、只收精简结果（摘要约 1k token），抓取过程不占对话额度
+  - 运行依赖已打包（Patchright + exceljs，约 7.5MB），不用装 Node，不用 npm install
+  - 装过桌面应用就复用它的浏览器和历史任务；否则首次使用自动下载一次 Chromium
+  - 发版时随 Release 一起发布（`npm run build:mcpb` 本地生成）
+- Claude Code 插件改为精简的独立目录 `plugin/`（只含引擎文件，首次使用只装抓取和 Excel 两个依赖），由 `npm run build:plugin` 从源文件生成，测试检查两边一致
+
+### 变更
+- 移除未验证的 `.codex-plugin` / `.agents` 清单与仓库根目录的 `.mcp.json`；Codex 统一用 `npm run agents codex`
+
 ## [2.2.0] - 2026-11-17
 
 ### 新增
