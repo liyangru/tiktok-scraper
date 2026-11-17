@@ -11,6 +11,7 @@ const TTTable = (() => {
     picking: false,
     picked: new Set(),
     expandAll: false,
+    limit: 100, // 一次只渲染前 100 行，长列表滚动更顺，按需「显示更多」
   };
 
   /** 搜索框里是不是「视频链接 / 纯 vid」（必须整段都是，夹杂其它词就按文本搜索） */
@@ -53,8 +54,8 @@ const TTTable = (() => {
 
   function periodBadge(r) {
     if (!state.view || !state.view.compareFrom || r.fromLink) return '';
-    if (r.inCurrent && r.inCompare) return `<span class="tag sm">${esc(t('periodBoth'))}</span>`;
-    if (r.inCompare) return `<span class="tag sm cmp">${esc(t('pcCmp'))}</span>`;
+    if (r.inCurrent && r.inCompare) return `<span class="tag">${esc(t('periodBoth'))}</span>`;
+    if (r.inCompare) return `<span class="tag">${esc(t('pcCmp'))}</span>`;
     return '';
   }
 
@@ -72,7 +73,7 @@ const TTTable = (() => {
       <td class="num muted">${i + 1}</td>
       <td class="ctr cover-col">${cover}</td>
       <td class="desc"><div class="d">${esc(r.desc) || `<span class="muted">${esc(t('noCaption'))}</span>`}</div>
-        <div class="sub-line">${esc(sub.join(' · '))} ${periodBadge(r)}${r.fromLink ? `<span class="tag sm">${esc(t('fromLink'))}</span>` : ''}</div></td>
+        <div class="sub-line">${esc(sub.join(' · '))} ${periodBadge(r)}${r.fromLink ? `<span class="tag">${esc(t('fromLink'))}</span>` : ''}</div></td>
       <td class="date-col"><div class="dt">${esc(r.date || DASH)}</div>${r.time ? `<div class="dt-t">${esc(r.time)}</div>` : ''}</td>
       <td class="num strong">${n(r.views)}</td>
       <td class="num">${n(r.likes)}</td>
@@ -80,8 +81,8 @@ const TTTable = (() => {
       <td class="num">${n(r.shares)}</td>
       <td class="num">${n(r.saves)}</td>
       <td class="num">${r.inter === null || r.inter === undefined ? `<span class="muted">${DASH}</span>` : fmtPct(r.inter)}</td>
-      <td class="ctr">${r.isEC ? `<span class="tag sm ec">${esc(t('yesShort'))}</span>` : `<span class="muted">${DASH}</span>`}</td>
-      <td class="ctr"><button type="button" class="icon-btn sm row-dl" data-vid="${esc(r.vid)}" title="${esc(t('colDownload'))}" aria-label="${esc(t('colDownload'))}">⤓</button></td>
+      <td class="ctr">${r.isEC ? `<span class="ec">${esc(t('yesShort'))}</span>` : `<span class="muted">${DASH}</span>`}</td>
+      <td class="ctr"><button type="button" class="row-dl" data-vid="${esc(r.vid)}" title="${esc(t('colDownload'))}" aria-label="${esc(t('colDownload'))}">⤓</button></td>
     </tr>`;
   }
 
@@ -100,9 +101,11 @@ const TTTable = (() => {
         .join('');
     }
     const rows = visibleRows();
+    const shown = rows.slice(0, tb.limit);
     host.innerHTML = rows.length
-      ? rows.map(rowHtml).join('')
-      : `<tr class="empty-row"><td colspan="13"><div class="chart-empty">${esc(tb.search ? t('noMatch') : t('noVideosInRange'))}</div></td></tr>`;
+      ? shown.map(rowHtml).join('') +
+        (rows.length > shown.length ? `<tr class="more-row"><td colspan="13"><button type="button" class="sm" data-more>${esc(t('showMore', { n: rows.length - shown.length }))}</button></td></tr>` : '')
+      : `<tr><td colspan="13"><div class="chart-empty">${esc(tb.search ? t('noMatch') : t('noVideosInRange'))}</div></td></tr>`;
     setExpandAll(false);
     $$('thead th[data-sort]').forEach((th) => {
       const on = th.dataset.sort === tb.sortKey;
@@ -113,7 +116,7 @@ const TTTable = (() => {
     });
     const all = $('#rowSelAll');
     if (all) all.checked = rows.length > 0 && rows.every((r) => tb.picked.has(String(r.vid)));
-    $('#tableMeta').textContent = t('tableMeta', { n: rows.length, by: t('sortBy_' + tb.sortKey) });
+    $('#tableMeta').textContent = t('tableMeta', { n: rows.length });
     updatePickCount();
   }
 
@@ -138,7 +141,7 @@ const TTTable = (() => {
       v = await jget('/api/videos/' + encodeURIComponent(r.vid));
     } catch (e) {
       if (e.status !== 404) {
-        el.innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+        el.innerHTML = `<div class="notice err"><span>${esc(e.message)}</span></div>`;
         return;
       }
     }
@@ -207,7 +210,7 @@ const TTTable = (() => {
         <div class="d-player-box"><video class="d-video" controls playsinline preload="metadata" poster="${esc(r.cover || '')}"></video></div>
         <div class="d-side">
           <div class="d-player-note"><span class="spinner xs"></span> ${esc(t('playerLoading'))}</div>
-          ${state.aiConfigured ? `<button type="button" class="btn sm d-ai" data-vid="${esc(r.vid)}">${esc(t('aiOneVideo'))}</button>` : ''}
+          ${state.aiConfigured ? `<button type="button" class="sm d-ai" data-vid="${esc(r.vid)}">${esc(t('aiOneVideo'))}</button>` : ''}
           <div class="d-out"></div>
         </div>
       </div>` : ''}
@@ -419,7 +422,7 @@ const TTTable = (() => {
       const r = await jpost('/api/ai/video', { vid });
       out.innerHTML = '<div class="ai-md">' + esc(r.analysis).replace(/^### (.*)$/gm, '<h4>$1</h4>').replace(/\n/g, '<br>') + '</div>';
     } catch (e) {
-      out.innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+      out.innerHTML = `<div class="notice err"><span>${esc(e.message)}</span></div>`;
     } finally {
       done();
     }
@@ -439,6 +442,7 @@ const TTTable = (() => {
       } else {
         tb.refs = null;
         tb.search = raw.toLowerCase();
+        tb.limit = 100;
         hint.hidden = true;
         $('#searchGo').hidden = true;
       }
@@ -456,6 +460,7 @@ const TTTable = (() => {
       const b = e.target.closest('[data-period]');
       if (!b) return;
       tb.period = b.dataset.period;
+      tb.limit = 100;
       render();
     });
 
@@ -486,6 +491,10 @@ const TTTable = (() => {
       if (dl) {
         e.stopPropagation();
         return downloadOne(dl.dataset.vid, dl);
+      }
+      if (e.target.closest('[data-more]')) {
+        tb.limit += 200;
+        return render();
       }
       const ai = e.target.closest('.d-ai');
       if (ai) return aiOne(ai.dataset.vid, ai);
@@ -538,11 +547,20 @@ const TTTable = (() => {
     });
 
     $('#dlBatchBtn').addEventListener('click', () => setPicking(!tb.picking));
+    // 「/」快速聚焦搜索框（输入框里打字时不拦截）
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || $('#results').hidden) return;
+      e.preventDefault();
+      $('#search').focus();
+    });
     $('#dlPickCancel').addEventListener('click', () => setPicking(false));
     $('#dlPickGo').addEventListener('click', (e) => downloadPicked(e.currentTarget));
   }
 
   function reset() {
+    tb.limit = 100;
     tb.picked.clear();
     tb.search = '';
     tb.refs = null;

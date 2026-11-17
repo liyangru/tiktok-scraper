@@ -166,51 +166,18 @@ app.post('/api/settings', (req, res) => {
   res.json({ ok: true, core: settings.getCore() });
 });
 
-/* ================= 核心 ================= */
-
-/** 内存中的任务表 */
-const jobs = new Map();
-
-/** 运行期才有的字段（AbortController 等）不落盘 */
-const RUNTIME_KEYS = new Set(['abort']);
-function saveJob(job) {
-  const p = path.join(DATA_DIR, `${job.id}.json`);
-  fs.writeFileSync(p, JSON.stringify(job, (k, v) => (RUNTIME_KEYS.has(k) ? undefined : v)));
-}
-function loadJobsFromDisk() {
-  for (const f of fs.readdirSync(DATA_DIR)) {
-    if (!f.endsWith('.json')) continue;
-    try {
-      const j = JSON.parse(fs.readFileSync(path.join(DATA_DIR, f), 'utf8'));
-      // 上次退出时还在跑的任务不可能继续了：明确标成「已中断」，否则前端会一直显示加载中
-      if (j.status === 'running' || j.status === 'queued' || j.status === 'stopping') {
-        j.status = 'interrupted';
-        j.error = j.error || '应用在任务进行中退出，任务已中断';
-        j.finishedAt = j.finishedAt || new Date().toISOString();
-        for (const a of j.accounts || []) {
-          if (a.state === 'running' || a.state === 'retrying' || a.state === 'queued') a.state = 'stopped';
-        }
-        try { saveJob(j); } catch (_) {}
-      }
-      jobs.set(j.id, j);
-    } catch (e) {}
-  }
-}
-
-function newId() {
-  return new Date().toISOString().replace(/[-:T.Z]/g, '').slice(0, 14) + '-' + Math.random().toString(36).slice(2, 7);
-}
-
-function cleanHandle(s) {
-  return String(s || '')
-    .trim()
-    .replace(/^https?:\/\/(www\.)?tiktok\.com\/@?/i, '')
-    .replace(/^@/, '')
-    .split(/[/?#]/)[0]
-    .trim();
-}
-
-const todayBangkok = () => TTPeriod.today();
+/* ================= 抓取任务（与命令行 / 插件共用 lib/jobs.js） ================= */
+const { createJobStore, JobError } = require('./lib/jobs');
+const jobStore = createJobStore({
+  dataDir: DATA_DIR,
+  scraper,
+  report,
+  videodb,
+  maxScrolls: MAX_SCROLLS,
+  applySync: (rows, ranges, job) => applySync(rows, ranges, job),
+  log: (m) => console.log(`  [job] ${m}`),
+});
+const sendErr = (res, e) => res.status(e instanceof JobError ? e.status : 500).json({ error: e.message });
 
 /** 健康检查 */
 const APP_VERSION = require('./package.json').version;
@@ -484,410 +451,78 @@ app.get('/api/health', (req, res) => {
 });
 
 /** 提交抓取任务 */
-app.post('/api/scrape', async (req, res) => {
-  const body = req.body || {};
-  const raw = Array.isArray(body.handles) ? body.handles : String(body.handles || '').split(/[\n,，;；\s]+/);
-  const handles = [...new Set(raw.map(cleanHandle).filter(Boolean))];
-  if (!handles.length) return res.status(400).json({ error: '请至少填写一个 TikTok 用户名' });
-  if (handles.length > 20) return res.status(400).json({ error: '单次最多 20 个账号' });
-  for (const h of handles) {
-    if (!/^[A-Za-z0-9._]{2,40}$/.test(h)) return res.status(400).json({ error: `用户名格式不对: ${h}` });
-  }
-
+app.post('/api/scrape', (req, res) => {
   const chrome = scraper.resolveChromePath();
   if (!chrome && process.env.BROWSER_HEADLESS !== '1') {
     return res.status(500).json({ error: '没找到 Chrome/Chromium，请设置环境变量 CHROME_PATH 指向浏览器可执行文件' });
   }
-
-  /* ---------- 本期 ----------
-     起止日期一律按曼谷日历处理（TTPeriod 只做纯日历运算，不经过本机时区）。 */
-  const today = todayBangkok();
-  const currentTo = body.to || today;
-  const currentFrom = body.from || TTPeriod.monthStart(currentTo); // 空 = 当月 1 号
-  if (!TTPeriod.isValid(currentFrom) || !TTPeriod.isValid(currentTo)) {
-    return res.status(400).json({ error: `日期格式不对：${currentFrom} ~ ${currentTo}` });
-  }
-  if (currentFrom > currentTo) return res.status(400).json({ error: '起始日期不能晚于结束日期' });
-  if (currentTo > today) return res.status(400).json({ error: `结束日期不能晚于今天（${today}）` });
-
-  /* ---------- 对比期 ----------
-     与前端同一份 TTPeriod.compareRange()：界面上显示的对比区间就是这里真正去抓的区间。
-     兼容旧调用方：只传了 compareFrom/compareTo 没传模式 → 视为自定义。 */
-  let compareMode = String(body.compareMode || '');
-  if (!compareMode) compareMode = body.compareFrom && body.compareTo ? 'custom' : 'none';
-  if (!TTPeriod.COMPARE_MODES.includes(compareMode)) return res.status(400).json({ error: `未知的对比方式：${compareMode}` });
-  let cmp = null;
-  if (compareMode !== 'none') {
-    cmp = TTPeriod.compareRange(compareMode, currentFrom, currentTo, { from: body.compareFrom, to: body.compareTo });
-    if (!cmp) {
-      if (TTPeriod.isAll(currentFrom)) compareMode = 'none'; // 「全部」没有上一期可比，静默按不对比处理
-      else return res.status(400).json({ error: '对比区间无效：请检查自定义对比的起止日期' });
-    }
-  }
-  /* 两期重叠是允许的（例如本期 14 天选「上周同期」）：重叠日期内的视频同时计入两期、各自统计。
-     界面会明确提示重叠天数，不再像旧版那样直接拒绝。 */
-
-  // 抓取范围 = 本期 ∪ 对比期，出结果后再按期切分
-  const from = cmp && cmp.from < currentFrom ? cmp.from : currentFrom;
-  const to = cmp && cmp.to > currentTo ? cmp.to : currentTo;
-
-  const job = {
-    id: newId(),
-    createdAt: new Date().toISOString(),
-    status: 'queued',
-    handles,
-    from, // 抓取区间（= 本期 ∪ 对比期），不是用户选的本期
-    to,
-    /* 期次边界：job 重开后要靠这两个区间把结果拆回「本期 vs 对比期」 */
-    currentFrom,
-    currentTo,
-    compareFrom: cmp ? cmp.from : null,
-    compareTo: cmp ? cmp.to : null,
-    compareMode: cmp ? compareMode : 'none',
-    compareInfo: cmp
-      ? { shiftedWeek: cmp.shiftedWeek, fullMonth: cmp.fullMonth, clamped: cmp.clamped, overlapDays: cmp.overlapDays, sameSpan: cmp.sameSpan }
-      : null,
-    // 抓取并发固定为 1（实测并发会显著提高失败率）
-    concurrency: 1,
-    stage: 'init',
-    startedAt: null,
-    events: [],
-    accounts: handles.map((h) => ({ handle: h, state: 'queued', stage: '', found: 0, count: 0, attempt: 0, error: '' })),
-    error: null,
-    finishedAt: null,
-  };
-  jobs.set(job.id, job);
-  saveJob(job);
-  res.json({
-    id: job.id,
-    from,
-    to,
-    handles,
-    currentFrom,
-    currentTo,
-    compareFrom: job.compareFrom,
-    compareTo: job.compareTo,
-    compareMode: job.compareMode,
-  });
-
-  runJob(job).catch((e) => {
-    job.status = 'error';
-    job.stage = 'error';
-    job.error = e.message || String(e);
-    job.finishedAt = new Date().toISOString();
-    for (const a of job.accounts) if (a.state === 'running' || a.state === 'retrying' || a.state === 'queued') a.state = 'failed';
-    saveJob(job);
-  });
-});
-
-/**
- * 执行抓取任务。
- * job.stage / job.accounts[].stage 只在真实执行到对应步骤时更新（来自 scraper 的 stage 事件），
- * 前端据此显示「正在启动浏览器 / 打开主页 / 滚动加载…」，不做任何凭空推算的进度。
- */
-async function runJob(job) {
-  job.status = 'running';
-  job.startedAt = new Date().toISOString();
-  job.abort = new AbortController();
-  saveJob(job);
-
-  const acc = (h) => job.accounts.find((x) => x.handle === h);
-  /** 浏览器引擎的原始报错带终端颜色码和整段调用日志，只保留给人看的第一句 */
-  const cleanErr = (m) =>
-    String(m || '')
-      .replace(/\u001b\[[0-9;]*m/g, '')
-      .split(/\n|Call log:/)[0]
-      .replace(/^page\.goto:\s*/, '')
-      .replace(/net::ERR_[A-Z_]+/, (x) => `网络连接失败（${x}）`)
-      .trim()
-      .slice(0, 200);
-  const push = (ev) => {
-    if (ev.reason) ev.reason = cleanErr(ev.reason);
-    if (ev.error) ev.error = cleanErr(ev.error);
-    job.events.push({ t: Date.now(), ...ev });
-    if (job.events.length > 500) job.events.splice(0, job.events.length - 500);
-    const a = ev.handle ? acc(ev.handle) : null;
-    switch (ev.type) {
-      case 'stage':
-        if (a) a.stage = ev.stage;
-        job.stage = ev.stage;
-        if (job.status === 'stopping') job.stage = 'stopping';
-        break;
-      case 'account-start':
-        if (a) {
-          a.state = 'running';
-          a.attempt = ev.attempt || 1;
-          a.error = '';
-        }
-        job.current = ev.handle;
-        break;
-      case 'account-retry':
-        if (a) {
-          a.state = 'retrying';
-          a.attempt = (ev.attempt || 1) + 1;
-          a.error = ev.reason || '';
-        }
-        break;
-      case 'account-progress':
-        if (a && typeof ev.found === 'number') a.found = ev.found;
-        break;
-      case 'account-error':
-        if (a) {
-          a.state = 'failed';
-          a.error = ev.error || '';
-        }
-        break;
-      case 'account-done':
-        if (a) {
-          a.state = ev.error ? 'failed' : 'done';
-          a.stage = ev.error ? a.stage : 'done';
-          a.count = ev.count;
-          a.stats = ev.stats;
-          a.complete = ev.complete !== false;
-          if (ev.error) a.error = ev.error;
-        }
-        break;
-      case 'account-stopped':
-        if (a && a.state !== 'done' && a.state !== 'failed') a.state = 'stopped';
-        break;
-    }
-  };
-
-  // 抓取期间每 3 秒落一次盘：应用意外退出后，历史里至少能看到进行到哪一步
-  const saver = setInterval(() => {
-    try { saveJob(job); } catch (_) {}
-  }, 3000);
-  let results;
   try {
-    results = await scraper.scrapeMany(job.handles, {
-      from: job.from,
-      to: job.to,
-      concurrency: job.concurrency,
-      maxScrolls: MAX_SCROLLS,
-      onEvent: push,
-      signal: job.abort.signal,
-    });
-  } finally {
-    clearInterval(saver);
-  }
-
-  const stopped = !!results.aborted || job.abort.signal.aborted;
-  for (const a of job.accounts) {
-    if (a.state === 'running' || a.state === 'retrying' || a.state === 'queued') a.state = stopped ? 'stopped' : 'failed';
-  }
-
-  push({ type: 'stage', stage: 'save' });
-  job.results = results.map((r) => ({
-    handle: r.handle,
-    nickname: r.nickname,
-    stats: r.stats,
-    items: r.items,
-    complete: r.complete !== false && !r.error,
-    oldestDate: r.oldestDate || null,
-    error: cleanErr(r.error),
-  }));
-  job.rowCount = report.toRows(job.results).length;
-  saveJob(job);
-
-  push({ type: 'stage', stage: 'stats' });
-  // 沉淀进视频数据库（按 vid 去重 + 指标历史），供 AI 分析与趋势使用
-  try {
-    const ing = videodb.ingest(job);
-    console.log(`  [db] 视频库：新增 ${ing.added}，更新 ${ing.updated}`);
+    const job = jobStore.create({ ...(req.body || {}), source: 'app' });
+    const { id, from, to, handles, currentFrom, currentTo, compareFrom, compareTo, compareMode } = job;
+    res.json({ id, from, to, handles, currentFrom, currentTo, compareFrom, compareTo, compareMode });
   } catch (e) {
-    console.log(`  ⚠ 视频库写入失败：${e.message}`);
+    sendErr(res, e);
   }
-
-  job.status = stopped ? 'stopped' : 'done';
-  job.stage = stopped ? 'stopped' : 'done';
-  job.finishedAt = new Date().toISOString();
-  delete job.abort;
-  saveJob(job);
-}
+});
 
 /** 停止任务：真正中断后台抓取（关闭浏览器），已完成账号的数据保留 */
 app.post('/api/jobs/:id/stop', (req, res) => {
-  const job = jobs.get(req.params.id);
-  if (!job) return res.status(404).json({ error: '任务不存在' });
-  if (job.status !== 'running' && job.status !== 'queued') {
-    return res.json({ ok: true, status: job.status, already: true });
-  }
-  job.status = 'stopping';
-  job.stage = 'stopping';
-  if (job.abort) job.abort.abort();
-  saveJob(job);
-  res.json({ ok: true, status: job.status });
-});
-
-/** 删除任务（单条） */
-app.delete('/api/jobs/:id', (req, res) => {
-  const id = req.params.id;
   try {
-    jobs.delete(id);
-    const f = path.join(DATA_DIR, `${id}.json`);
-    if (fs.existsSync(f)) fs.unlinkSync(f);
-    res.json({ ok: true, id });
+    const job = jobStore.stop(req.params.id);
+    res.json({ ok: true, status: job.status });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    sendErr(res, e);
   }
 });
 
-/** 批量删除任务 */
+/** 删除任务（单条 / 批量） */
+app.delete('/api/jobs/:id', (req, res) => res.json({ ok: true, deleted: jobStore.remove([req.params.id]) }));
 app.post('/api/jobs/delete', (req, res) => {
   const ids = (req.body && req.body.ids) || [];
   if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: '没有选中任务' });
-  let n = 0;
-  for (const id of ids) {
-    try {
-      jobs.delete(id);
-      const f = path.join(DATA_DIR, `${id}.json`);
-      if (fs.existsSync(f)) fs.unlinkSync(f);
-      n++;
-    } catch (_) {}
-  }
-  res.json({ ok: true, deleted: n });
+  res.json({ ok: true, deleted: jobStore.remove(ids) });
 });
-
-/** 查询任务 */
-/** job 的期次区间（兼容本修复之前建的旧 job：缺字段就退化成「只有本期」） */
-function jobRanges(job) {
-  const currentFrom = job.currentFrom || job.from;
-  const currentTo = job.currentTo || job.to;
-  return {
-    currentFrom,
-    currentTo,
-    compareFrom: job.compareFrom || null,
-    compareTo: job.compareTo || null,
-  };
-}
-
-/** 每个账号真正加载到了多早的数据：对比期早于这个日期的部分属于「数据不足」 */
-function jobCoverage(job) {
-  return (job.results || []).map((r) => ({
-    handle: r.handle,
-    complete: r.complete !== false,
-    // 完整加载 = 覆盖整个抓取区间；否则只覆盖到最早加载到的那天
-    from: r.complete === false ? r.oldestDate || job.to : job.from,
-    to: job.to,
-    error: r.error || '',
-  }));
-}
 
 app.get('/api/jobs/:id', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job) return res.status(404).json({ error: '任务不存在' });
-  const ranges = jobRanges(job);
-  const finished = !!job.results && !['running', 'queued', 'stopping'].includes(job.status);
-  // 进行中只回进度（不带明细，轮询要轻）；结束后才算行与对比
-  const rows = finished ? report.toRows(job.results, ranges) : [];
-  // 创作中心 / 卖家中心已登录 → 自动把两边平台数据合并进行（无需手动导入）
-  if (finished) await applySync(rows, ranges, job);
-  res.json({
-    id: job.id,
-    status: job.status,
-    stage: job.stage || '',
-    error: job.error,
-    from: job.from,
-    to: job.to,
-    currentFrom: ranges.currentFrom,
-    currentTo: ranges.currentTo,
-    compareFrom: ranges.compareFrom,
-    compareTo: ranges.compareTo,
-    compareMode: job.compareMode || (ranges.compareFrom ? 'custom' : 'none'),
-    compareInfo: job.compareInfo || null,
-    handles: job.handles,
-    current: job.current || '',
-    createdAt: job.createdAt,
-    startedAt: job.startedAt || job.createdAt,
-    finishedAt: job.finishedAt,
-    now: new Date().toISOString(),
-    accounts: job.accounts || [],
-    // 老 job / 手工造的数据可能没有 events，直接 slice 会把整个服务打崩
-    events: (job.events || []).slice(-80),
-    coverage: finished ? jobCoverage(job) : [],
-    rows,
-    periodCompare: rows.length ? report.periodCompare(rows, ranges) : null,
-    summary: finished
-      ? job.results.map((r) => ({ handle: r.handle, nickname: r.nickname, stats: r.stats, complete: r.complete !== false, error: r.error || '' }))
-      : [],
-  });
+  res.json(await jobStore.view(job));
 });
 
-/** 历史任务 */
-app.get('/api/jobs', (req, res) => {
-  const list = [...jobs.values()]
-    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
-    .slice(0, 50)
-    .map((j) => {
-      const rg = jobRanges(j);
-      return {
-        id: j.id,
-        status: j.status,
-        handles: j.handles,
-        from: j.from,
-        to: j.to,
-        currentFrom: rg.currentFrom,
-        currentTo: rg.currentTo,
-        compareFrom: rg.compareFrom,
-        compareTo: rg.compareTo,
-        compareMode: j.compareMode || (rg.compareFrom ? 'custom' : 'none'),
-        createdAt: j.createdAt,
-        finishedAt: j.finishedAt || null,
-        error: j.error || '',
-        rowCount: j.rowCount || 0,
-      };
-    });
-  res.json(list);
+/** 历史任务（含命令行 / 插件建的任务） */
+app.get('/api/jobs', (req, res) => res.json(jobStore.list()));
+
+/** 简报：给「复制简报」和插件用的精简摘要 */
+app.get('/api/jobs/:id/summary', async (req, res) => {
+  const job = jobStore.get(req.params.id);
+  if (!job || !jobStore.isFinished(job)) return res.status(404).json({ error: '任务不存在或尚未完成' });
+  res.json(await jobStore.summarize(job, { cartMode: req.query.cart === 'trim' ? 'trim' : 'mean' }));
 });
 
-/* ⚠️ 这里曾经重复注册过一次「删除单个任务」的路由（上面 609 行那个才是生效的），
-   第二个永远不会被走到 —— 死代码。删掉，避免以后改错地方。 */
-
-function rangeLabel(job) {
-  const rg = jobRanges(job);
-  // 有对比期时，副标题要把两期都写清楚（job.from/to 只是并集，看不出期次）
-  if (rg.compareFrom && rg.compareTo) {
-    return `${rg.currentFrom}~${rg.currentTo}  vs  ${rg.compareFrom}~${rg.compareTo}`;
-  }
-  return `${job.from} ~ ${job.to}`;
-}
-
-/** 导出 Excel */
+const langOf = (req) => (['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh');
 app.get('/api/jobs/:id/export.xlsx', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).send('任务不存在或尚未完成');
-  const ranges = jobRanges(job);
-  const rows = report.toRows(job.results, ranges);
-  await applySync(rows, ranges, job);
-  if (!rows.length) return res.status(404).send('该区间内没有数据');
-  const lang = ['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh';
-  const wb = await report.buildWorkbook({
-    rows,
-    accounts: job.results.map((r) => ({ handle: r.handle, nickname: r.nickname, stats: r.stats })),
-    title: `TikTok · ${job.handles.join(' / ')}`,
-    rangeLabel: rangeLabel(job),
-    ranges,
-    lang,
-  });
-  const name = `tiktok_${job.handles.join('_').slice(0, 40)}_${job.from}_${job.to}_${lang}.xlsx`;
-  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-  await wb.xlsx.write(res);
-  res.end();
+  try {
+    const { name, buffer } = await jobStore.exportXlsx(job, langOf(req));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
+    res.end(buffer);
+  } catch (e) {
+    res.status(e.status || 500).send(e.message);
+  }
 });
-
-/** 导出 CSV */
 app.get('/api/jobs/:id/export.csv', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).send('任务不存在或尚未完成');
-  const rows = report.toRows(job.results, jobRanges(job));
-  await applySync(rows, jobRanges(job), job);
-  if (!rows.length) return res.status(404).send('该区间内没有数据');
-  const lang = ['zh', 'th', 'en'].includes(req.query.lang) ? req.query.lang : 'zh';
-  const name = `tiktok_${job.handles.join('_').slice(0, 40)}_${job.from}_${job.to}_${lang}.csv`;
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
-  res.send(report.buildCsv(rows, lang, !!jobRanges(job).compareFrom));
+  try {
+    const { name, text } = await jobStore.exportCsv(job, langOf(req));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(name)}"`);
+    res.send(text);
+  } catch (e) {
+    res.status(e.status || 500).send(e.message);
+  }
 });
 
 /**
@@ -899,12 +534,12 @@ app.get('/api/jobs/:id/export.csv', async (req, res) => {
  * 这个端点把同步结果写回 job.rows，前端重新拉一次就能看到 avgWatchTime / finishRate 等字段。
  */
 app.post('/api/jobs/:id/sync', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).json({ error: '任务不存在或尚未完成' });
   if (!SYNC_PROVIDERS.length) return res.status(400).json({ error: '没有可用的平台数据源' });
-  const rows = report.toRows(job.results, jobRanges(job));
+  const rows = report.toRows(job.results, jobStore.ranges(job));
   const before = rows.filter((r) => r.avgWatchTime !== undefined || r.gmv !== undefined || r.finishRate !== undefined).length;
-  await applySync(rows, jobRanges(job), job);
+  await applySync(rows, jobStore.ranges(job), job);
   const after = rows.filter((r) => r.avgWatchTime !== undefined || r.gmv !== undefined || r.finishRate !== undefined).length;
   // 回写，让后续导出与前端刷新都能拿到这份数据
   job.rows = rows;
@@ -925,7 +560,6 @@ app.post('/api/jobs/:id/sync', async (req, res) => {
   });
 });
 
-loadJobsFromDisk();
 
 /* ================= AI 经营分析（默认自动出，不需要点击） =================
  * 用户要求：抓到数据后就有固定模板和维度的 AI 分析，直接放在概览里；
@@ -972,10 +606,10 @@ function briefAggText(label, a) {
 }
 
 app.get('/api/jobs/:id/ai-brief', async (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job || !job.results) return res.status(404).json({ error: '任务不存在或尚未完成' });
   if (job.aiBrief) return res.json({ ok: true, cached: true, brief: job.aiBrief, at: job.aiBriefAt });
-  const ranges = jobRanges(job);
+  const ranges = jobStore.ranges(job);
   const rows = job.rows && job.rows.length ? job.rows : report.toRows(job.results, ranges);
   if (!rows.length) return res.status(400).json({ error: '该任务没有数据' });
   await applySync(rows, ranges, job); // 平台数据（GMV/完播率…）能合多少合多少
@@ -1019,7 +653,7 @@ app.get('/api/jobs/:id/ai-brief', async (req, res) => {
     ], { maxTokens: 1400 });
     job.aiBrief = brief;
     job.aiBriefAt = new Date().toISOString();
-    saveJob(job);
+    jobStore.save(job);
     res.json({ ok: true, cached: false, brief, at: job.aiBriefAt });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -1028,11 +662,11 @@ app.get('/api/jobs/:id/ai-brief', async (req, res) => {
 
 /** 清除缓存强制重新分析（前端「重新分析」用） */
 app.delete('/api/jobs/:id/ai-brief', (req, res) => {
-  const job = jobs.get(req.params.id);
+  const job = jobStore.get(req.params.id);
   if (!job) return res.status(404).json({ error: '任务不存在' });
   job.aiBrief = null;
   job.aiBriefAt = null;
-  saveJob(job);
+  jobStore.save(job);
   res.json({ ok: true });
 });
 

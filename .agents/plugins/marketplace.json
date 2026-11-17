@@ -1,0 +1,11 @@
+{
+  "name": "liyangru-tiktok",
+  "owner": { "name": "liyangru" },
+  "plugins": [
+    {
+      "name": "tiktok-scraper",
+      "source": { "source": "local", "path": "./" },
+      "description": "抓取 TikTok 账号视频数据，周期对比、挂车分析、导出 Excel"
+    }
+  ]
+}

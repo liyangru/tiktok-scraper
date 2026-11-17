@@ -456,13 +456,13 @@ const TTLogin = (() => {
     body.dataset.syncFired = '';
     openModal('loginModal');
     if (!reg || typeof reg.mount !== 'function') {
-      body.innerHTML = `<div class="note err">${esc(t('featureMissing'))}</div>`;
+      body.innerHTML = `<div class="notice err"><span>${esc(t('featureMissing'))}</span></div>`;
       return;
     }
     try {
       reg.mount(body, { t, loginOnly: true, onLoggedIn: () => autoSync(id) });
     } catch (e) {
-      body.innerHTML = `<div class="note err">${esc(e.message)}</div>`;
+      body.innerHTML = `<div class="notice err"><span>${esc(e.message)}</span></div>`;
     }
   }
 

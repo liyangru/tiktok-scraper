@@ -88,8 +88,8 @@ const TTFilter = (() => {
     const note = $('#rangeNote');
     if (note) {
       note.innerHTML = TTPeriod.isAll(f.from)
-        ? `<b>${esc(t('preset_all'))}</b> · ${esc(t('rangeAllNote', { to: f.to }))}`
-        : `<b>${esc(rangeText(f.from, f.to))}</b> · ${esc(t('nDays', { n: days }))}`;
+        ? `<b>${esc(t('preset_all'))}</b> ${esc(t('rangeAllNote', { to: f.to }))}`
+        : `<b>${esc(rangeText(f.from, f.to))}</b> ${esc(t('nDays', { n: days }))}`;
     }
 
     // 对比
@@ -103,26 +103,28 @@ const TTFilter = (() => {
     if ($('#cmpFrom')) $('#cmpFrom').value = f.cmpFrom || '';
     if ($('#cmpTo')) $('#cmpTo').value = f.cmpTo || '';
 
+    // 对比期：只显示区间与天数；平移 / 重叠 / 月末对齐等口径说明收进 ⓘ
     const c = compare();
     const cnote = $('#cmpNote');
-    const warn = $('#cmpWarn');
-    const warns = [];
     if (cnote) {
+      const warns = [];
+      const infos = [];
+      if (c) {
+        if (c.shiftedWeek) warns.push(t('warnShiftedWeek', { n: c.currentDays }));
+        if (c.overlapDays) warns.push(t('warnOverlap', { n: c.overlapDays }));
+        if (c.clamped) infos.push(t('warnClamped'));
+        if (c.fullMonth) infos.push(t('noteFullMonth'));
+        if (!c.sameSpan && !c.fullMonth) infos.push(t('warnSpan', { a: c.currentDays, b: c.days }));
+      }
       if (TTPeriod.isAll(f.from)) cnote.innerHTML = esc(t('cmpAllNa'));
-      else if (f.mode === 'none') cnote.innerHTML = esc(t('cmpNoneNote'));
+      else if (f.mode === 'none') cnote.innerHTML = '';
       else if (!c) cnote.innerHTML = `<span class="err">${esc(t('cmpCustomNeed'))}</span>`;
-      else cnote.innerHTML = `${esc(t('cmpPeriod'))} <b>${esc(rangeText(c.from, c.to))}</b> · ${esc(t('nDays', { n: c.days }))}`;
-    }
-    if (c) {
-      if (c.shiftedWeek) warns.push(t('warnShiftedWeek', { n: c.currentDays }));
-      if (c.fullMonth) warns.push(t('noteFullMonth'));
-      if (c.clamped) warns.push(t('warnClamped'));
-      if (c.overlapDays) warns.push(t('warnOverlap', { n: c.overlapDays }));
-      if (!c.sameSpan && !c.fullMonth) warns.push(t('warnSpan', { a: c.currentDays, b: c.days }));
-    }
-    if (warn) {
-      warn.innerHTML = warns.map((w) => `<div>${esc(w)}</div>`).join('');
-      warn.hidden = !warns.length;
+      else
+        cnote.innerHTML =
+          `<b>${esc(rangeText(c.from, c.to))}</b> ${esc(t('nDays', { n: c.days }))}` +
+          (c.overlapDays ? ` <span class="badge warn">${esc(t('overlapN', { n: c.overlapDays }))}</span>` : '') +
+          tipHtml(warns.concat(infos).join('\n'), warns.length ? 'warn' : '');
+      cnote.hidden = !cnote.innerHTML;
     }
   }
 

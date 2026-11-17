@@ -29,6 +29,10 @@ const TTApp = (() => {
       else el.textContent = v;
     });
     $$('[data-i18n-ph]').forEach((el) => (el.placeholder = t(el.dataset.i18nPh)));
+    $$('[data-i18n-tip]').forEach((el) => {
+      el.dataset.tip = t(el.dataset.i18nTip);
+      el.setAttribute('aria-label', el.dataset.tip);
+    });
     $$('[data-i18n-title]').forEach((el) => {
       el.title = t(el.dataset.i18nTitle);
       el.setAttribute('aria-label', el.title);
@@ -138,7 +142,10 @@ const TTApp = (() => {
       to: body.to,
       events: [],
     });
-    $('#emptyState').hidden = true;
+    // 右栏给出等待中的空状态，而不是一片空白
+    $('#emptyState').hidden = false;
+    $('#emptyTitle').innerHTML = `<span class="spin"></span> ${esc(t('emptyScraping'))}`;
+    $('#emptySub').textContent = t('emptyScrapingSub');
     try {
       const r = await jpost('/api/scrape', body);
       state.jobId = r.id;
@@ -158,7 +165,8 @@ const TTApp = (() => {
         _params: body,
       });
       toast(t('submitFailed', { msg: e.message }), 'err');
-      if (!state.job) $('#emptyState').hidden = false;
+      $('#emptyTitle').textContent = t('emptyTitle');
+      $('#emptySub').textContent = t('emptySub');
     }
   }
 
@@ -314,28 +322,27 @@ const TTApp = (() => {
     renderQuickAcc();
   }
 
-  const STATUS_CLS = { done: 's-done', error: 's-failed', interrupted: 's-failed', stopped: 's-stopped', running: 's-running', queued: 's-running', stopping: 's-running' };
+  const STATUS_BADGE = { done: 'ok', error: 'err', interrupted: 'err', stopped: '', running: 'run', queued: 'run', stopping: 'run' };
   function renderHistory() {
     const host = $('#history');
     if (!host) return;
-    const cnt = $('#historyCount');
-    if (cnt) cnt.textContent = history.length ? String(history.length) : '';
+    $('#historyCount').textContent = history.length ? String(history.length) : '';
     if (!history.length) {
-      host.innerHTML = `<div class="empty-mini">${esc(t('noHistory'))}</div>`;
+      host.innerHTML = `<div class="idle">${esc(t('noHistory'))}</div>`;
       return;
     }
     host.innerHTML = history
       .map((j) => {
-        const cmp = j.compareFrom ? `<span class="tag sm">${esc(t('cmpMode_' + (j.compareMode || 'custom')))}</span>` : '';
-        const cur = state.jobId === j.id;
-        return `<div class="hist-item${cur ? ' cur' : ''}">
-          <input type="checkbox" class="hist-pick" data-pick="${esc(j.id)}" aria-label="select">
+        const cmp = j.compareFrom ? ` · ${esc(t('cmpMode_' + (j.compareMode || 'custom')))}` : '';
+        const status = j.status === 'done' ? fmtInt(j.rowCount || 0) : t('jobStatus_' + j.status);
+        return `<div class="hist-item${state.jobId === j.id ? ' cur' : ''}">
+          <input type="checkbox" data-pick="${esc(j.id)}" aria-label="select">
           <button type="button" class="hist-main" data-open="${esc(j.id)}">
-            <span class="hist-h">${esc(j.handles.map((h) => '@' + h).join(' '))}</span>
-            <span class="hist-meta">${esc(rangeText(j.currentFrom || j.from, j.currentTo || j.to))} ${cmp} · ${esc(String(j.createdAt || '').slice(0, 16).replace('T', ' '))}</span>
+            <b>${esc(j.handles.map((h) => '@' + h).join(' '))}</b>
+            <span>${esc(rangeText(j.currentFrom || j.from, j.currentTo || j.to))}${cmp}${j.source && j.source !== 'app' ? ` · ${esc(j.source)}` : ''}</span>
           </button>
-          <span class="pill ${STATUS_CLS[j.status] || ''}" title="${esc(j.error || '')}">${esc(t('jobStatus_' + j.status))} · ${fmtInt(j.rowCount || 0)}</span>
-          <button type="button" class="icon-btn sm" data-del="${esc(j.id)}" title="${esc(t('histDeleteOne'))}" aria-label="${esc(t('histDeleteOne'))}">×</button>
+          <span class="badge ${STATUS_BADGE[j.status] || ''}" title="${esc(j.error || '')}">${esc(status)}</span>
+          <button type="button" class="icon-btn" data-del="${esc(j.id)}" title="${esc(t('histDeleteOne'))}" aria-label="${esc(t('histDeleteOne'))}">×</button>
         </div>`;
       })
       .join('');
@@ -346,20 +353,15 @@ const TTApp = (() => {
     $('#histDel').disabled = !n;
     $('#histMeta').textContent = n ? t('histPicked', { n }) : '';
   }
-  async function openJob(id) {
+  /** 打开历史任务：当前结果先保留，点中的那一行转圈，载入成功再切换（不闪白屏） */
+  async function openJob(id, btn) {
     if (state.busy) return toast(t('busyNoSwitch'), 'warn');
-    closeModal('historyModal');
-    state.jobId = id;
-    TTProgress.reset();
-    TTTable.reset();
-    $('#results').hidden = true;
-    $('#emptyState').hidden = true;
-    const host = $('#taskPanel');
-    host.hidden = false;
-    host.className = 'task card loading';
-    host.innerHTML = `<div class="task-head"><span class="spinner"></span><div class="task-title">${esc(t('loadingHistory'))}</div></div>`;
+    const done = btnBusy(btn);
     try {
       const j = await jget(`/api/jobs/${encodeURIComponent(id)}`);
+      state.jobId = id;
+      TTProgress.reset();
+      TTTable.reset();
       if (TTProgress.isRunning(j)) {
         state.busy = true;
         state.task = j;
@@ -367,17 +369,19 @@ const TTApp = (() => {
         poll();
         return;
       }
-      host.hidden = true;
+      state.task = j;
+      TTProgress.render(j);
       if ((j.rows || []).length) TTResults.load(j);
       else {
-        TTProgress.render(j);
-        $('#emptyState').hidden = false;
+        state.job = null;
+        state.rows = [];
+        TTResults.render();
       }
       renderHistory();
     } catch (e) {
-      host.className = 'task card finished k-failed';
-      host.innerHTML = `<div class="task-sum"><span class="ts-icon"></span><div class="ts-text"><b>${esc(t('loadFailed'))}</b><span>${esc(e.message)}</span></div>
-        <div class="ts-actions"><button type="button" class="btn sm" data-reopen="${esc(id)}">${esc(t('retry'))}</button></div></div>`;
+      toast(`${t('loadFailed')}：${e.message}`, 'err');
+    } finally {
+      done();
     }
   }
   async function deleteJobs(ids, btn) {
@@ -407,7 +411,7 @@ const TTApp = (() => {
       if (names.length >= 4) break;
     }
     host.hidden = !names.length;
-    host.innerHTML = `<span class="muted">${esc(t('quickAcc'))}</span>` + names.map((n) => `<button type="button" class="chip-btn" data-quick="${esc(n)}">@${esc(n)}</button>`).join('');
+    host.innerHTML = names.map((n) => `<button type="button" data-quick="${esc(n)}" title="${esc(t('quickAcc'))}">+ @${esc(n)}</button>`).join('');
   }
 
   /* ---------------- 窗口控制条（仅 Electron 无边框窗口） ---------------- */
@@ -457,6 +461,10 @@ const TTApp = (() => {
     $$('.lang-switch button').forEach((b) => b.addEventListener('click', () => applyLang(b.dataset.lang)));
     applyLang(window.detectLang());
 
+    // 账号输入框记住上次填的内容
+    const ta = $('#handles');
+    ta.value = prefs.get('handles', '');
+    ta.addEventListener('input', () => prefs.set('handles', ta.value));
     $('#startBtn').addEventListener('click', () => start());
     $('#stopBtn').addEventListener('click', stop);
     document.addEventListener('keydown', (e) => {
@@ -465,13 +473,9 @@ const TTApp = (() => {
     $('#exportXlsx').addEventListener('click', (e) => exportFile('xlsx', e.currentTarget));
     $('#exportCsv').addEventListener('click', (e) => exportFile('csv', e.currentTarget));
 
-    $('#historyBtn').addEventListener('click', () => {
-      openModal('historyModal');
-      loadHistory();
-    });
     $('#history').addEventListener('click', (e) => {
       const o = e.target.closest('[data-open]');
-      if (o) return openJob(o.dataset.open);
+      if (o) return openJob(o.dataset.open, o);
       const d = e.target.closest('[data-del]');
       if (d && confirm(t('histConfirmOne'))) deleteJobs([d.dataset.del], d);
     });
@@ -485,10 +489,6 @@ const TTApp = (() => {
       if (!ids.length) return;
       if (confirm(t('histConfirm', { n: ids.length }))) deleteJobs(ids, e.currentTarget);
     });
-    $('#taskPanel').addEventListener('click', (e) => {
-      const r = e.target.closest('[data-reopen]');
-      if (r) openJob(r.dataset.reopen);
-    });
     $('#quickAcc').addEventListener('click', (e) => {
       const b = e.target.closest('[data-quick]');
       if (!b) return;
@@ -496,6 +496,7 @@ const TTApp = (() => {
       const cur = ta.value.split(/[\n,，\s]+/).map((x) => x.trim()).filter(Boolean);
       if (!cur.includes(b.dataset.quick)) cur.push(b.dataset.quick);
       ta.value = cur.join('\n');
+      prefs.set('handles', ta.value);
     });
 
     checkHealth();

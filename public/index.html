@@ -10,7 +10,6 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<!-- 自定义窗口控制条（Electron 无边框窗口；浏览器里不显示） -->
 <div id="titlebar" hidden>
   <div class="tb-drag"></div>
   <div class="tb-btns">
@@ -19,23 +18,18 @@
     <button type="button" id="tbClose" aria-label="close">&#x2715;</button>
   </div>
 </div>
+<div class="wrap">
 
-<div class="app">
-  <!-- ============ 顶部 ============ -->
-  <header class="appbar">
-    <div class="brand">
-      <span class="logo" aria-hidden="true"></span>
-      <div>
-        <h1 data-i18n="title">TikTok 数据分析</h1>
-        <div class="brand-sub" data-i18n="subtitle"></div>
-      </div>
+  <header class="top">
+    <div>
+      <h1 data-i18n="title">TikTok 数据分析</h1>
+      <div class="sub" data-i18n="subtitle"></div>
     </div>
-    <div class="appbar-tools">
+    <div class="tools">
       <span class="chip running" id="runChip" hidden></span>
-      <span class="chip" id="browserChip"></span>
-      <button type="button" class="btn ghost" id="historyBtn"><span data-i18n="history">历史任务</span><span class="count" id="historyCount"></span></button>
-      <button type="button" class="btn ghost" id="settingsBtn" data-i18n="settings">设置</button>
-      <div class="seg lang-switch" role="radiogroup" aria-label="Language">
+      <span class="chip" id="browserChip"><span class="dot"></span><span>…</span></span>
+      <button type="button" class="settings-btn" id="settingsBtn" data-i18n="settings">设置</button>
+      <div class="lang-switch" role="radiogroup" aria-label="Language">
         <button type="button" role="radio" data-lang="zh">中文</button>
         <button type="button" role="radio" data-lang="th">ไทย</button>
         <button type="button" role="radio" data-lang="en">EN</button>
@@ -43,244 +37,218 @@
     </div>
   </header>
 
-  <!-- ============ 数据筛选 ============ -->
-  <section class="filter card" aria-labelledby="filterTitle">
-    <h2 class="sr-only" id="filterTitle" data-i18n="filterTitle">数据筛选</h2>
-    <div class="filter-grid">
-      <div class="f-col f-accounts">
-        <label class="f-label" for="handles"><span data-i18n="usernames">TikTok 账号</span> <em data-i18n="usernamesHint"></em></label>
-        <textarea id="handles" rows="3" spellcheck="false" data-i18n-ph="usernamesPlaceholder"></textarea>
-        <div class="quick-acc" id="quickAcc" hidden></div>
-      </div>
+  <div class="grid">
+    <!-- ============ 左栏：抓取 / 进度 / 历史 ============ -->
+    <div class="col">
+      <section class="panel" aria-labelledby="scrapeTitle">
+        <h2 class="sec-title" id="scrapeTitle"><span data-i18n="scrapeBox">数据抓取</span></h2>
 
-      <div class="f-col f-dates">
-        <div class="f-label" id="dateLabel" data-i18n="dateRange">日期范围</div>
-        <div class="seg seg-wrap" id="presetSeg" role="radiogroup" aria-labelledby="dateLabel"></div>
-        <div class="date-row">
+        <label class="fld">
+          <span class="lbl"><span data-i18n="usernames">TikTok 账号</span> <em data-i18n="usernamesHint"></em></span>
+          <textarea id="handles" rows="3" spellcheck="false" data-i18n-ph="usernamesPlaceholder"></textarea>
+        </label>
+        <div class="chips" id="quickAcc" hidden></div>
+
+        <div class="fld" style="margin-bottom:12px">
+          <span class="lbl" id="dateLabel" data-i18n="dateRange">日期</span>
+        </div>
+        <div class="chips" id="presetSeg" role="radiogroup" aria-labelledby="dateLabel"></div>
+        <div class="row2" style="margin-bottom:20px">
           <div class="date-field">
-            <span class="df-k" data-i18n="startDate">开始</span>
             <input type="date" id="from" data-i18n-title="startDate">
             <svg class="df-ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2"/><path d="M3 8.5h14M7 3v3M13 3v3"/></svg>
           </div>
-          <span class="date-sep" aria-hidden="true">→</span>
           <div class="date-field">
-            <span class="df-k" data-i18n="endDate">结束</span>
             <input type="date" id="to" data-i18n-title="endDate">
             <svg class="df-ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2"/><path d="M3 8.5h14M7 3v3M13 3v3"/></svg>
           </div>
         </div>
-        <div class="f-note" id="rangeNote" aria-live="polite"></div>
-      </div>
+        <div class="range-note" id="rangeNote" aria-live="polite"></div>
 
-      <div class="f-col f-compare">
-        <label class="f-label" for="cmpMode" data-i18n="cmpModeLabel">对比方式</label>
-        <select id="cmpMode" class="select"></select>
-        <div class="date-row" id="cmpCustom" hidden>
-          <div class="date-field sm">
-            <span class="df-k" data-i18n="startDate">开始</span>
+        <label class="fld">
+          <span class="lbl"><span data-i18n="cmpModeLabel">对比</span></span>
+          <select id="cmpMode"></select>
+        </label>
+        <div class="row2" id="cmpCustom" hidden style="margin:-8px 0 20px">
+          <div class="date-field">
             <input type="date" id="cmpFrom" data-i18n-title="cmpFromLabel">
             <svg class="df-ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2"/><path d="M3 8.5h14M7 3v3M13 3v3"/></svg>
           </div>
-          <span class="date-sep" aria-hidden="true">→</span>
-          <div class="date-field sm">
-            <span class="df-k" data-i18n="endDate">结束</span>
+          <div class="date-field">
             <input type="date" id="cmpTo" data-i18n-title="cmpToLabel">
             <svg class="df-ic" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="4.5" width="14" height="12" rx="2"/><path d="M3 8.5h14M7 3v3M13 3v3"/></svg>
           </div>
         </div>
-        <div class="f-note" id="cmpNote" aria-live="polite"></div>
-        <div class="f-warn" id="cmpWarn" hidden></div>
-      </div>
+        <div class="range-note" id="cmpNote" aria-live="polite"></div>
 
-      <div class="f-col f-actions">
-        <button type="button" id="startBtn" class="btn primary lg" data-i18n="start">开始抓取</button>
-        <button type="button" id="stopBtn" class="btn danger lg" hidden data-i18n="stop">停止抓取</button>
-        <p class="f-tip" data-i18n="tip"></p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ============ 抓取状态（只在任务进行 / 刚结束时出现） ============ -->
-  <section id="taskPanel" class="task card" hidden aria-live="polite"></section>
-
-  <div class="tip-bubble" id="tipBubble" hidden>
-    <span class="tip-text" data-i18n="tipLoginBubble"></span>
-    <span class="tip-actions">
-      <button type="button" id="tipLogin" class="btn xs primary" data-i18n="tipLoginBtn"></button>
-      <button type="button" id="tipNever" class="btn xs ghost" data-i18n="tipNever"></button>
-      <button type="button" id="tipClose" class="icon-btn sm" aria-label="close">×</button>
-    </span>
-  </div>
-
-  <section class="empty-state" id="emptyState">
-    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/>
-    </svg>
-    <div class="es-title" id="emptyTitle" data-i18n="emptyTitle"></div>
-    <div class="es-sub" id="emptySub" data-i18n="emptySub"></div>
-  </section>
-
-  <!-- ============ 结果 ============ -->
-  <main id="results" hidden>
-    <div class="results-head">
-      <div class="rh-left">
-        <h2 data-i18n="overview">数据概览</h2>
-        <div class="rh-meta" id="resultMeta"></div>
-      </div>
-      <div class="seg" id="acctTabs" role="radiogroup" hidden></div>
-      <div class="rh-actions">
-        <span class="fineprint" id="exportNote" hidden></span>
-        <button type="button" id="exportXlsx" class="btn" data-i18n="downloadXlsx">导出 Excel</button>
-        <button type="button" id="exportCsv" class="btn" data-i18n="downloadCsv">导出 CSV</button>
-      </div>
-    </div>
-
-    <div id="dataBanner" hidden></div>
-    <div class="kpis" id="kpis"></div>
-
-    <div class="stack" id="aiSection" hidden></div>
-
-    <h3 class="section-label" data-i18n="analysis">图表分析</h3>
-    <div class="stack">
-      <div id="chartDaily"></div>
-      <div id="accountCards"></div>
-      <div id="chartCreator" hidden></div>
-      <div id="cartSection"></div>
-      <div id="periodSection" hidden></div>
-    </div>
-
-    <!-- 视频明细 -->
-    <section class="card table-card" aria-labelledby="detailsTitle">
-      <div class="table-head">
-        <div class="th-left">
-          <h3 id="detailsTitle" data-i18n="details">视频明细</h3>
-          <span class="muted" id="tableMeta"></span>
+        <div class="stack-btns">
+          <button type="button" id="startBtn" class="primary wide" data-i18n="start">开始抓取</button>
+          <button type="button" id="stopBtn" class="wide danger" hidden data-i18n="stop">停止</button>
         </div>
-        <div class="seg xs" id="periodSeg" role="radiogroup" hidden></div>
-        <div class="search-wrap">
-          <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="9" cy="9" r="5.5"/><path d="M13.2 13.2L17 17"/></svg>
-          <input class="search" id="search" type="search" data-i18n-ph="searchPh">
-          <button type="button" id="searchGo" class="btn xs primary" hidden data-i18n="searchLinkGo"></button>
-          <div class="search-hint" id="searchHint" hidden></div>
+      </section>
+
+      <section class="panel" id="taskPanel" aria-live="polite">
+        <h2 class="sec-title"><span data-i18n="progress">进度</span><span class="grow"></span><span class="task-time" data-elapsed></span></h2>
+        <div id="taskBody"><div class="idle" data-i18n="notStarted"></div></div>
+      </section>
+
+      <section class="panel" aria-labelledby="histTitle">
+        <h2 class="sec-title" id="histTitle"><span data-i18n="history">历史任务</span><span class="hint" id="historyCount"></span></h2>
+        <div class="hist-tools">
+          <label><input type="checkbox" id="histAll"> <span data-i18n="histSelectAll"></span></label>
+          <span class="grow" id="histMeta"></span>
+          <button type="button" id="histDel" class="xs danger" disabled data-i18n="histDelete"></button>
         </div>
-        <div class="th-actions">
-          <button type="button" id="expandAllBtn" class="btn sm ghost" data-i18n="expandAll">全部展开</button>
-          <button type="button" id="dlBatchBtn" class="btn sm" data-i18n="dlBatch">批量下载</button>
-          <span class="pick-bar" id="pickBar" hidden>
-            <span class="muted" id="pickCount"></span>
-            <button type="button" id="dlPickCancel" class="btn sm ghost" data-i18n="dlPickCancel"></button>
-            <button type="button" id="dlPickGo" class="btn sm primary" data-i18n="dlPickGo"></button>
+        <div id="history"></div>
+      </section>
+    </div>
+
+    <!-- ============ 右栏：结果 ============ -->
+    <div class="col">
+      <div class="tip-bubble" id="tipBubble" hidden>
+        <span data-i18n="tipLoginBubble"></span>
+        <span class="btn-row">
+          <button type="button" id="tipLogin" class="xs primary" data-i18n="tipLoginBtn"></button>
+          <button type="button" id="tipNever" class="xs ghost" data-i18n="tipNever"></button>
+          <button type="button" id="tipClose" class="icon-btn" aria-label="close">×</button>
+        </span>
+      </div>
+
+      <section class="panel" id="emptyState">
+        <div class="empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg>
+          <b id="emptyTitle" data-i18n="emptyTitle"></b>
+          <span id="emptySub" data-i18n="emptySub"></span>
+        </div>
+      </section>
+
+      <section class="panel" id="results" hidden>
+        <h2 class="sec-title"><span data-i18n="overview">结果概览</span></h2>
+        <div class="res-head">
+          <div class="meta" id="resultMeta"></div>
+          <div class="tabs sm" id="acctTabs" role="radiogroup" hidden></div>
+          <div class="btn-row">
+            <button type="button" id="copyBrief" class="sm" data-i18n="copyBrief">复制简报</button>
+            <button type="button" id="exportXlsx" class="sm primary" data-i18n="downloadXlsx">Excel</button>
+            <button type="button" id="exportCsv" class="sm" data-i18n="downloadCsv">CSV</button>
+          </div>
+        </div>
+
+        <div id="dataBanner" hidden></div>
+        <div class="kpis" id="kpis"></div>
+
+        <div id="aiSection" hidden></div>
+        <div id="chartDaily"></div>
+        <div id="chartHours"></div>
+        <div id="accountCards"></div>
+        <div id="chartCreator" hidden></div>
+        <div id="cartSection"></div>
+        <div id="periodSection" hidden></div>
+
+        <div class="res-tools">
+          <h2 class="sec-title" style="margin:0"><span data-i18n="details">视频明细</span><span class="hint" id="tableMeta"></span></h2>
+          <span class="grow"></span>
+          <div class="tabs sm" id="periodSeg" role="radiogroup" hidden></div>
+          <div class="search-wrap">
+            <input class="search" id="search" type="search" data-i18n-ph="searchPh">
+            <button type="button" id="searchGo" class="xs primary" hidden data-i18n="searchLinkGo"></button>
+            <div class="search-hint" id="searchHint" hidden></div>
+          </div>
+          <button type="button" id="expandAllBtn" class="sm ghost" data-i18n="expandAll"></button>
+          <button type="button" id="dlBatchBtn" class="sm" data-i18n="dlBatch"></button>
+          <span class="btn-row" id="pickBar" hidden>
+            <span class="muted" id="pickCount" style="font-size:12px"></span>
+            <button type="button" id="dlPickCancel" class="sm ghost" data-i18n="dlPickCancel"></button>
+            <button type="button" id="dlPickGo" class="sm primary" data-i18n="dlPickGo"></button>
           </span>
         </div>
-      </div>
-      <div class="tbl-wrap">
-        <table class="data videos">
-          <thead>
-            <tr>
-              <th class="ctr pick-col"><input type="checkbox" id="rowSelAll" aria-label="select all"></th>
-              <th class="num" style="width:40px">#</th>
-              <th class="ctr cover-col"><span data-i18n="colCover"></span></th>
-              <th><span data-i18n="colCaption"></span></th>
-              <th class="sortable" data-sort="date" style="width:96px"><span data-i18n="colDate"></span><span class="ar"></span></th>
-              <th class="num sortable" data-sort="views" style="width:92px"><span data-i18n="colViews"></span><span class="ar"></span></th>
-              <th class="num sortable" data-sort="likes" style="width:84px"><span data-i18n="colLikes"></span><span class="ar"></span></th>
-              <th class="num sortable" data-sort="comments" style="width:76px"><span data-i18n="colComments"></span><span class="ar"></span></th>
-              <th class="num sortable" data-sort="shares" style="width:76px"><span data-i18n="colShares"></span><span class="ar"></span></th>
-              <th class="num sortable" data-sort="saves" style="width:76px"><span data-i18n="colSaves"></span><span class="ar"></span></th>
-              <th class="num sortable" data-sort="inter" style="width:80px"><span data-i18n="colEngage"></span><span class="ar"></span></th>
-              <th class="ctr" style="width:56px"><span data-i18n="colShopping"></span></th>
-              <th class="ctr" style="width:48px"><span data-i18n="colDownload"></span></th>
-            </tr>
-          </thead>
-          <tbody id="rows"></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
+        <div class="tbl-wrap">
+          <table class="videos">
+            <thead>
+              <tr>
+                <th class="ctr pick-col"><input type="checkbox" id="rowSelAll" aria-label="select all"></th>
+                <th class="num" style="width:40px">#</th>
+                <th class="ctr cover-col"><span data-i18n="colCover"></span></th>
+                <th><span data-i18n="colCaption"></span></th>
+                <th class="sortable" data-sort="date" style="width:92px"><span data-i18n="colDate"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="views" style="width:88px"><span data-i18n="colViews"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="likes" style="width:78px"><span data-i18n="colLikes"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="comments" style="width:72px"><span data-i18n="colComments"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="shares" style="width:72px"><span data-i18n="colShares"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="saves" style="width:72px"><span data-i18n="colSaves"></span><span class="ar"></span></th>
+                <th class="num sortable" data-sort="inter" style="width:76px"><span data-i18n="colEngage"></span><span class="ar"></span></th>
+                <th class="ctr" style="width:48px"><span data-i18n="colShopping"></span></th>
+                <th class="ctr" style="width:44px"><span data-i18n="colDownload"></span></th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
   <footer id="appVer" class="app-ver"></footer>
 </div>
 
 <div id="toasts" aria-live="polite"></div>
 
-<!-- ============ 历史任务 ============ -->
-<div class="modal-backdrop" id="historyModal" hidden>
-  <div class="modal drawer" role="dialog" aria-modal="true" aria-labelledby="historyTitle">
-    <div class="modal-head">
-      <h2 id="historyTitle" data-i18n="history">历史任务</h2>
-      <button type="button" class="modal-close" data-close aria-label="close">×</button>
-    </div>
-    <div class="hist-actions">
-      <label class="check"><input type="checkbox" id="histAll"> <span data-i18n="histSelectAll"></span></label>
-      <span class="muted" id="histMeta"></span>
-      <button type="button" id="histDel" class="btn xs danger-ghost" disabled data-i18n="histDelete"></button>
-    </div>
-    <div class="modal-body" id="history"></div>
-  </div>
-</div>
-
-<!-- ============ 设置 ============ -->
+<!-- 设置 -->
 <div class="modal-backdrop" id="settingsModal" hidden>
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="modal-head">
       <h2 id="settingsTitle" data-i18n="settingsTitle">设置</h2>
       <button type="button" class="modal-close" data-close aria-label="close">×</button>
     </div>
-    <div class="modal-body settings">
+    <div class="modal-body">
       <section class="set-group">
-        <h3 data-i18n="setLoginGroup">账号登录</h3>
-        <p class="fineprint" data-i18n="setLoginNote"></p>
-        <div class="set-actions">
-          <button type="button" class="btn" data-feature="tiktok-login" data-i18n="loginCreator"></button>
-          <button type="button" class="btn" data-feature="seller-import" data-i18n="loginSeller"></button>
+        <h3><span data-i18n="setLoginGroup">账号登录</span><i class="tip down" tabindex="0" data-i18n-tip="setLoginNote"></i></h3>
+        <div class="btn-row">
+          <button type="button" class="sm" data-feature="tiktok-login" data-i18n="loginCreator"></button>
+          <button type="button" class="sm" data-feature="seller-import" data-i18n="loginSeller"></button>
         </div>
       </section>
       <section class="set-group">
-        <h3 data-i18n="setDataGroup">数据来源</h3>
-        <p class="fineprint" data-i18n="setDataNote"></p>
-        <div class="set-actions">
-          <button type="button" class="btn" data-seller-upload data-i18n="sellerManual"></button>
-          <button type="button" class="btn" data-feature="seller-api" data-i18n="sellerApiTitle"></button>
+        <h3><span data-i18n="setDataGroup">数据来源</span><i class="tip down" tabindex="0" data-i18n-tip="setDataNote"></i></h3>
+        <div class="btn-row">
+          <button type="button" class="sm" data-seller-upload data-i18n="sellerManual"></button>
+          <button type="button" class="sm" data-feature="seller-api" data-i18n="sellerApiTitle"></button>
         </div>
       </section>
       <section class="set-group">
-        <h3 data-i18n="setStorageGroup">文件存储位置</h3>
+        <h3><span data-i18n="setStorageGroup">文件存储位置</span></h3>
         <div class="set-row">
-          <button type="button" id="storagePick" class="input-like path"></button>
-          <button type="button" id="storageReset" class="btn sm ghost" data-i18n="storageReset"></button>
-          <button type="button" id="storageOpen" class="btn sm ghost" data-i18n="storageOpen"></button>
+          <button type="button" id="storagePick" class="path"></button>
+          <button type="button" id="storageReset" class="sm ghost" data-i18n="storageReset"></button>
+          <button type="button" id="storageOpen" class="sm ghost" data-i18n="storageOpen"></button>
         </div>
-        <input id="storageDir" class="input" hidden data-i18n-ph="storageInputHint">
-        <p class="fineprint" data-i18n="storageAutoNote"></p>
+        <input id="storageDir" class="input" hidden data-i18n-ph="storageInputHint" style="margin-top:8px">
       </section>
       <section class="set-group">
-        <h3><span data-i18n="aiGroupTitle">AI 分析接口</span> <span class="pill" id="aiState"></span></h3>
-        <p class="fineprint" data-i18n="aiGroupNote"></p>
+        <h3><span data-i18n="aiGroupTitle">AI</span><i class="tip down" tabindex="0" data-i18n-tip="aiGroupNote"></i><span class="badge" id="aiState"></span></h3>
         <div class="set-grid">
           <input id="aiBase" class="input wide" data-i18n-ph="aiBase">
           <input id="aiKey" class="input" type="password" autocomplete="off" data-i18n-ph="aiKey">
           <input id="aiModel" class="input" data-i18n-ph="aiModel">
-          <input id="aiVision" class="input" data-i18n-ph="aiVision">
+          <input id="aiVision" class="input wide" data-i18n-ph="aiVision">
         </div>
         <div class="set-row">
-          <button type="button" id="aiSave" class="btn sm primary" data-i18n="storageSave"></button>
-          <button type="button" id="aiTest" class="btn sm" data-i18n="aiTest"></button>
+          <button type="button" id="aiSave" class="sm primary" data-i18n="storageSave"></button>
+          <button type="button" id="aiTest" class="sm" data-i18n="aiTest"></button>
           <span class="status" id="aiStatus"></span>
         </div>
       </section>
       <section class="set-group">
-        <h3 data-i18n="upGroup">应用更新</h3>
-        <div class="set-row">
-          <button type="button" id="upCheck" class="btn sm" data-i18n="upCheck"></button>
-          <button type="button" id="upInstall" class="btn sm primary" hidden data-i18n="upInstall"></button>
+        <h3><span data-i18n="upGroup">应用更新</span></h3>
+        <div class="set-row" style="margin-top:0">
+          <button type="button" id="upCheck" class="sm" data-i18n="upCheck"></button>
+          <button type="button" id="upInstall" class="sm primary" hidden data-i18n="upInstall"></button>
           <span class="status" id="upState"></span>
         </div>
-        <p class="fineprint" data-i18n="upHint"></p>
       </section>
     </div>
   </div>
 </div>
 
-<!-- 登录 / 内置功能面板（应用内小窗，不打开系统浏览器） -->
 <div class="modal-backdrop" id="loginModal" hidden>
   <div class="modal modal-login" role="dialog" aria-modal="true" aria-labelledby="loginTitle">
     <div class="modal-head">
@@ -291,7 +259,6 @@
   </div>
 </div>
 
-<!-- 卖家中心导出文件手动导入 -->
 <div class="modal-backdrop" id="sellerModal" hidden>
   <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="sellerTitle">
     <div class="modal-head">
@@ -299,7 +266,7 @@
       <button type="button" class="modal-close" data-close aria-label="close">×</button>
     </div>
     <div class="modal-body">
-      <p class="fineprint" data-i18n="sellerUpload"></p>
+      <span class="muted" style="font-size:12.5px" data-i18n="sellerUpload"></span>
       <input type="file" id="sellerFile" accept=".xlsx,.xls" class="input">
       <div class="status" id="sellerStatus"></div>
     </div>

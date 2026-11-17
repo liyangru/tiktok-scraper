@@ -72,6 +72,12 @@ function deltaChip(pct, opts = {}) {
   return `<span class="delta ${cls}"${opts.title ? ` title="${esc(opts.title)}"` : ''}>${txt}</span>`;
 }
 
+/** ⓘ 悬浮说明：说明文字不占版面，悬停 / 聚焦时才显示。text 为纯文本 */
+function tipHtml(text, cls) {
+  if (!text) return '';
+  return `<i class="tip${cls ? ' ' + cls : ''}" tabindex="0" role="note" aria-label="${esc(text)}" data-tip="${esc(text)}"></i>`;
+}
+
 /** 秒 → mm:ss / h:mm:ss */
 function fmtDuration(sec) {
   const s = Math.max(0, Math.floor(sec || 0));

@@ -23,7 +23,7 @@ const TTCollapse = (() => {
    * @param {object} o
    *   id        持久化用的唯一标识（如 'chart:daily'）
    *   title     标题
-   *   meta      标题旁的简短说明（指标口径 / 单位）
+   *   meta      口径说明（纯文本）：收进标题旁的 ⓘ 悬浮提示，不占版面
    *   summary   摘要 HTML：收起时保留在标题栏里，避免收起后只剩一行字
    *   extra     标题栏右侧的操作 HTML（按钮、分段切换等），点击不触发折叠
    *   body      内容 HTML
@@ -40,7 +40,7 @@ const TTCollapse = (() => {
         <span class="cx-chev" aria-hidden="true"></span>
         <div class="cx-titles">
           <span class="cx-title">${o.title || ''}</span>
-          ${o.meta ? `<span class="cx-meta">${o.meta}</span>` : ''}
+          ${o.meta ? `<i class="tip down" tabindex="0" data-no-toggle data-tip="${o.meta}"></i>` : ''}
         </div>
         ${o.summary ? `<div class="cx-summary">${o.summary}</div>` : '<div class="cx-summary"></div>'}
         ${o.extra ? `<div class="cx-extra">${o.extra}</div>` : ''}
@@ -67,7 +67,7 @@ const TTCollapse = (() => {
   const toggle = (sec) => set(sec, sec.dataset.open !== '1');
 
   /** 标题栏里这些元素有自己的交互，点它们不应该折叠 */
-  const OWN_INTERACTIVE = 'button, a, input, select, textarea, label, [data-no-toggle]';
+  const OWN_INTERACTIVE = 'button, a, input, select, textarea, label, [data-no-toggle], .tip';
 
   function init() {
     document.addEventListener('click', (e) => {

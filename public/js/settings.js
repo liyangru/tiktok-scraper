@@ -49,7 +49,7 @@ const TTSettings = (() => {
     state.aiConfigured = !!configured;
     const el = $('#aiState');
     if (el) {
-      el.className = 'pill ' + (configured ? 's-done' : 's-queued');
+      el.className = 'badge ' + (configured ? 'ok' : '');
       el.textContent = t(configured ? 'aiConfigured' : 'aiNotConfigured');
     }
     if (was !== state.aiConfigured && state.job) TTResults.render();

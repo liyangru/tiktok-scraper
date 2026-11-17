@@ -9,8 +9,7 @@ try {
   pw = require('patchright');
   ENGINE = 'patchright';
 } catch (e) {
-  pw = require('playwright-core');
-  ENGINE = 'playwright-core';
+  throw e; // 只支持 patchright（playwright-core 无头会被 TikTok 拦下）
 }
 const ENGINE2 = ENGINE;
 

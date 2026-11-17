@@ -4,7 +4,51 @@
 
 ## 版本迭代怎么做
 
-1. **改代码**，并在本文件顶部的 `## [2.1.0] - 2026-11-17
+1. **改代码**，并在本文件顶部的 `## [Unreleased]` 区块里记一笔（分类：`新增 / 变更 / 修复 / 移除 / 安全`）。
+   - 没打算发版就先留在 `Unreleased`，**不要为了发版而发版**。
+2. **确定要发版时**：把 `## [Unreleased]` 改名为 `## [x.y.z] - YYYY-MM-DD`，并在最上面新开一个空的 `## [Unreleased]`；同步改 `package.json` 的 `version`。
+3. **提交并打 tag**：
+
+   ```bash
+   git add -A && git commit -m "release: v1.0.2"
+   git tag v1.0.2 && git push origin master --tags
+   ```
+
+4. CI（`.github/workflows/release.yml`）会自动：构建 Windows / macOS / 部署包 → **从本文件抽取对应版本的段落作为 Release 说明** → 发 Release。
+   - 若某个 tag 在本文件里找不到对应段落，会自动回退成 GitHub 的 `--generate-notes`（按 commit 生成）。
+
+> ⚠️ tag 名要和本文件的标题对得上：tag `v1.0.2` ↔ 标题 `## [1.0.2]`。对不上就抽不到，会走回退逻辑。
+
+> 🚫 **不要自作主张删除旧版本。** 旧版本的 Release 和 tag **默认全部保留**，方便回溯、回滚到任意一版；
+> 只有明确要求删掉某个版本时才删。新版本正常发布即可，GitHub 会自动把最新的一版标为 Latest。
+
+---
+
+## [Unreleased]
+
+## [2.2.0] - 2026-11-17
+
+### 新增
+- **插件 / 命令行版：不用打开应用也能抓取分析**
+  - Claude Code 插件（`.claude-plugin/`）：`/plugin marketplace add liyangru/tiktok-scraper` 安装，自带 MCP 服务与 `tiktok-analytics` 技能
+  - Codex 插件（`.codex-plugin/`）+ `npm run agents codex` 一键写入 `~/.codex/config.toml` 并安装技能；`claude-desktop` / `claude-code` 同样一条命令接入
+  - MCP 服务 `mcp/server.js`（零依赖 stdio）：`start_scrape` / `get_scrape` / `list_videos` / `list_scrapes` / `export_report` / `stop_scrape` / `doctor`；抓取先启动后查询，不受客户端 60 秒超时限制；返回精简 JSON 省 token
+  - 命令行 `bin/cli.js`：`tiktok-scraper scrape @a @b --preset thisMonth --compare lastMonth --xlsx`
+  - 与桌面应用共用数据目录（历史任务、视频库、浏览器），装过应用就不用再下载浏览器；没装则首次使用自动安装依赖和 Chromium
+- 发布时段柱状图 + 最佳时段（样本 ≥2 条）
+- 「复制简报」：一键复制本期结论（汇总、对比、TOP 视频）到剪贴板
+- 记住上次输入的账号，常用账号一键添加；视频明细分页「显示更多」，`/` 快速聚焦搜索
+
+### 变更
+- 界面回到 2.0 的黑白简洁风格：左侧抓取 / 进度 / 历史，右侧结果；说明文字收进 ⓘ 提示，不再大段铺字
+- KPI 分层：4 个主指标大卡 + 5 个次要指标横条；对比数据不足时只在顶部提示一次
+- 历史任务内联在左侧，点开不打断当前结果
+- 抓取任务逻辑抽到 `lib/jobs.js`，桌面应用 / 命令行 / MCP 共用；新增 `GET /api/jobs/:id/summary`
+
+### 移除
+- `playwright-core` 依赖（只用 Patchright），安装更轻
+
+## [2.1.0] - 2026-11-17
 
 ### 新增
 - 统一数据分析工作台：顶部 → 数据筛选 → 抓取状态 → 数据概览 → 图表分析 → 挂车对比 → 周期对比 → 视频明细
@@ -35,28 +79,6 @@
 ### 变更
 - 保留 2.0.1 的图表美化：平滑曲线 + 面积渐变 + 网格刻度 + 末点脉冲 + 描边动画；卡片迷你趋势；对比差异横条
 - 基础功能与图表美化兼得，Windows/macOS 双平台构建
-
-## [Unreleased]` 区块里记一笔（分类：`新增 / 变更 / 修复 / 移除 / 安全`）。
-   - 没打算发版就先留在 `Unreleased`，**不要为了发版而发版**。
-2. **确定要发版时**：把 `## [Unreleased]` 改名为 `## [x.y.z] - YYYY-MM-DD`，并在最上面新开一个空的 `## [Unreleased]`；同步改 `package.json` 的 `version`。
-3. **提交并打 tag**：
-
-   ```bash
-   git add -A && git commit -m "release: v1.0.2"
-   git tag v1.0.2 && git push origin master --tags
-   ```
-
-4. CI（`.github/workflows/release.yml`）会自动：构建 Windows / macOS / 部署包 → **从本文件抽取对应版本的段落作为 Release 说明** → 发 Release。
-   - 若某个 tag 在本文件里找不到对应段落，会自动回退成 GitHub 的 `--generate-notes`（按 commit 生成）。
-
-> ⚠️ tag 名要和本文件的标题对得上：tag `v1.0.2` ↔ 标题 `## [1.0.2]`。对不上就抽不到，会走回退逻辑。
-
-> 🚫 **不要自作主张删除旧版本。** 旧版本的 Release 和 tag **默认全部保留**，方便回溯、回滚到任意一版；
-> 只有明确要求删掉某个版本时才删。新版本正常发布即可，GitHub 会自动把最新的一版标为 Latest。
-
----
-
-## [Unreleased]
 
 ## [1.2.0] - 2026-10-12
 
