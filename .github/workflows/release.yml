@@ -167,14 +167,15 @@ jobs:
       - name: 打包 Claude 扩展（.mcpb）
         run: |
           node scripts/build-plugin.js --mcpb
-          ls -la dist/tiktok-scraper.mcpb
+          cp dist/tiktok-scraper.mcpb .   # 和部署包放同一层，Release 资产里不带子目录
+          ls -la tiktok-scraper.mcpb
 
       - uses: actions/upload-artifact@v7
         with:
           name: server-bundle
           path: |
             tiktok-scraper-server-*.tar.gz
-            dist/tiktok-scraper.mcpb
+            tiktok-scraper.mcpb
           if-no-files-found: error
 
   # --------------------------------------------------------------- Release
@@ -250,6 +251,8 @@ jobs:
             echo "- **Windows**：双击 exe。首次启动会把自带 Chromium 解压到应用数据目录（约 330MB，几秒），之后秒开。"
             echo "- **macOS**：解压后把 \`.app\` 拖进「应用程序」。未做 Apple 公证，首次打开请**右键 → 打开**，或执行 \`xattr -dr com.apple.quarantine /Applications/TikTokScraper.app\`"
             echo "- **服务器**：解压后 \`./start.sh\`。"
+            echo "- **Claude 桌面应用扩展**：下载 \`tiktok-scraper.mcpb\`，Claude → 设置 → 扩展程序 → 高级设置 → 安装扩展，选这个文件。之后在对话里说「抓 @账号 本月数据，和上月同期比」，AI 调用同一套引擎在本机抓取，不占对话额度。"
+            echo "- **Claude Code 插件**：\`/plugin marketplace add liyangru/tiktok-scraper\` → \`/plugin install tiktok-scraper@liyangru-tiktok\`。"
             echo ""
             echo "---"
             echo ""
@@ -262,10 +265,17 @@ jobs:
             echo "完整更新日志见 [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/master/CHANGELOG.md)。"
           } > /tmp/rel/final.md
 
-          gh release create "$TAG" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "TikTok 多账号数据抓取 ${TAG}" \
-            --notes-file /tmp/rel/final.md \
-            assets/*
+          # 在网页上先建了 Release（同时建 tag）也没关系：已存在就更新说明、补传安装包
+          if gh release view "$TAG" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "$TAG" --repo "${GITHUB_REPOSITORY}" \
+              --title "TikTok 多账号数据抓取 ${TAG}" --notes-file /tmp/rel/final.md
+            gh release upload "$TAG" --repo "${GITHUB_REPOSITORY}" --clobber assets/*
+          else
+            gh release create "$TAG" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "TikTok 多账号数据抓取 ${TAG}" \
+              --notes-file /tmp/rel/final.md \
+              assets/*
+          fi
 
           echo "Release 已发布: ${GITHUB_REPOSITORY}/releases/tag/${TAG}"
