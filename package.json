@@ -1,6 +1,6 @@
 {
   "name": "tiktok-scraper",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "private": true,
   "description": "TikTok 多账号数据抓取与分析工作台（统一应用：抓取 · 周期对比 · 挂车分析 · 导出）",
   "author": "TikTok Scraper",
